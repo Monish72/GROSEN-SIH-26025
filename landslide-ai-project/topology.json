@@ -1,0 +1,6 @@
+{
+  "NODE_01": {"lat": 11.5630, "lon": 79.4835, "type": "sensor", "name": "Pit Floor Sump Extensometer"},
+  "NODE_02": {"lat": 11.5658, "lon": 79.4882, "type": "sensor", "name": "East Highwall Escarpment"},
+  "NODE_03": {"lat": 11.5642, "lon": 79.4860, "type": "sensor", "name": "West Incline Haul Road"},
+  "GATEWAY_01": {"lat": 11.5710, "lon": 79.4850, "type": "gateway", "name": "Safe Pit-Top Elevated LoRa Mast"}
+}
