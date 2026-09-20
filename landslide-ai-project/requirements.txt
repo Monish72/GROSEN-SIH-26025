@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+requests
+xgboost
+scikit-learn
+pandas
+numpy
+filterpy
+websockets
+pyserial
