@@ -1,0 +1,2144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GROSEN - Engineering Diagnostics | Mine Subsidence Monitoring</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: {
+                            850: '#0f172a',
+                            950: '#020617'
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                        mono: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts: Inter (Clean, Neutral, Modern UI Typography) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            background-color: #020617;
+            font-family: var(--font-sans);
+            color: #f1f5f9;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .font-mono, .telemetry-val, .metric-num, [data-mono] {
+            font-family: var(--font-sans);
+            font-feature-settings: "tnum" 1, "cv02" 1, "cv03" 1, "cv04" 1;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.01em;
+        }
+
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(51, 65, 85, 0.65);
+        }
+
+        .glass-panel-card {
+            background: rgba(15, 23, 42, 0.65);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(51, 65, 85, 0.5);
+        }
+
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #020617;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+
+        /* ===== ALERT SYSTEM STYLES ===== */
+        @keyframes alertPulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        @keyframes strobeRed {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+            50% { box-shadow: 0 0 30px 5px rgba(239, 68, 68, 0.4); }
+        }
+        @keyframes strobeAmber {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+            50% { box-shadow: 0 0 25px 4px rgba(245, 158, 11, 0.3); }
+        }
+        @keyframes borderFlash {
+            0%, 100% { border-color: rgba(239, 68, 68, 0.3); }
+            50% { border-color: rgba(239, 68, 68, 0.8); }
+        }
+
+        #eng-alert-banner {
+            display: none;
+            transition: all 0.4s ease;
+        }
+        #eng-alert-banner.alert-critical {
+            display: flex;
+            background: linear-gradient(90deg, rgba(127,29,29,0.95), rgba(153,27,27,0.85), rgba(127,29,29,0.95));
+            border-bottom: 2px solid #ef4444;
+            animation: alertPulse 1.5s ease-in-out infinite, strobeRed 2s ease-in-out infinite;
+        }
+        #eng-alert-banner.alert-warning {
+            display: flex;
+            background: linear-gradient(90deg, rgba(120,53,15,0.9), rgba(146,64,14,0.8), rgba(120,53,15,0.9));
+            border-bottom: 2px solid #f59e0b;
+            animation: alertPulse 2s ease-in-out infinite, strobeAmber 2.5s ease-in-out infinite;
+        }
+
+        .card-danger {
+            border-color: rgba(239, 68, 68, 0.6) !important;
+            animation: borderFlash 1.5s ease-in-out infinite;
+        }
+        .card-warning {
+            border-color: rgba(245, 158, 11, 0.5) !important;
+        }
+
+        .fos-critical { color: #ef4444 !important; }
+        .fos-warning  { color: #f59e0b !important; }
+        .fos-safe     { color: #10b981 !important; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-950 text-slate-100 select-none">
+
+    <!-- ========================================== -->
+    <!-- PERSISTENT ALERT BANNER (Hidden by default) -->
+    <!-- ========================================== -->
+    <div id="eng-alert-banner" class="items-center justify-between px-4 py-2 z-[60] text-xs font-mono font-bold" style="display:none;">
+        <div class="flex items-center space-x-3">
+            <span id="eng-alert-icon" class="text-lg">&#9888;&#65039;</span>
+            <div>
+                <span id="eng-alert-title" class="text-white text-sm font-bold tracking-wider"></span>
+                <span id="eng-alert-detail" class="text-white/80 text-[11px] ml-2"></span>
+            </div>
+        </div>
+        <div class="flex items-center space-x-3">
+            <span id="eng-alert-fos" class="px-2 py-0.5 rounded text-[10px] font-bold bg-black/30 border border-white/20"></span>
+            <span id="eng-alert-node" class="px-2 py-0.5 rounded text-[10px] font-bold bg-black/30 border border-white/20"></span>
+            <span id="eng-alert-time" class="text-white/60 text-[10px] tabular-nums"></span>
+        </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- TOP NAVIGATION HEADER (Decluttered & Clean) -->
+    <!-- ========================================== -->
+    <header class="h-14 bg-slate-950/95 border-b border-slate-800 px-4 sm:px-6 flex items-center justify-between z-50 sticky top-0 backdrop-blur-md">
+        <!-- Left: Sector & Title -->
+        <div class="flex items-center space-x-3">
+            <div class="flex items-center space-x-2.5">
+                <div class="h-5 w-1 bg-cyan-400 rounded-full"></div>
+                <div>
+                    <h1 class="font-mono text-xs sm:text-sm font-bold tracking-wider text-white flex items-center gap-2">
+                        <span>GROSEN &mdash; NLC SECTOR 4 PIT</span>
+                        <span class="text-[10px] px-1.5 py-0.2 rounded-md bg-cyan-950 text-cyan-400 border border-cyan-800/60 font-mono hidden md:inline-block">ENGINEERING DIAGNOSTICS</span>
+                    </h1>
+                </div>
+            </div>
+        </div>
+
+        <!-- Center: Dual-Mode Architecture Navigation Buttons -->
+        <div class="flex items-center bg-slate-900 border border-slate-700 rounded-xl p-0.5 shadow-sm select-none">
+            <button id="mode-btn-operator" onclick="navigateToOperator()" 
+                    class="flex items-center space-x-1.5 px-3 py-1 text-xs font-mono font-medium text-slate-400 hover:text-slate-200 rounded-lg transition cursor-pointer">
+                <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                <span>Operator View</span>
+            </button>
+            <button id="mode-btn-engineering" onclick="void(0)" 
+                    class="flex items-center space-x-1.5 px-3 py-1 text-xs font-mono font-bold rounded-lg transition bg-slate-800 text-white border border-slate-600 shadow-xs cursor-default">
+                <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                <span>Engineering Diagnostics</span>
+            </button>
+        </div>
+
+        <!-- Right: Telemetry Health, Actions & Connection Status (Evenly Spaced) -->
+        <div class="flex items-center space-x-4">
+            <!-- Telemetry Uptime & Ping -->
+            <div class="hidden sm:flex items-center space-x-3 text-[11px] font-mono text-slate-300">
+                <div class="flex items-center space-x-1.5">
+                    <span class="text-slate-500 font-bold">UPTIME:</span>
+                    <span id="nav-uptime" class="text-emerald-400 font-bold tabular-nums">00:00:00</span>
+                </div>
+                <div class="flex items-center space-x-1.5">
+                    <span class="text-slate-500 font-bold">PING:</span>
+                    <span id="nav-ping" class="text-slate-200 font-bold tabular-nums">-- ms</span>
+                </div>
+            </div>
+
+            <!-- Weather Report Widget -->
+            <div id="weather-widget" class="hidden md:flex items-center space-x-2 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[10px] font-mono">
+                <span class="text-amber-400 text-sm">&#9728;&#65039;</span>
+                <div class="flex flex-col leading-tight">
+                    <span id="weather-temp" class="text-white font-bold tabular-nums">32°C</span>
+                    <span id="weather-desc" class="text-slate-400 text-[8px]">Sunny</span>
+                </div>
+            </div>
+
+            <!-- Test Surge Movement Simulator -->
+            <button id="sim-motion-btn" onclick="triggerSimulatedMotion()" title="Trigger Geotechnical Slope Movement Surge" class="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-slate-900 text-amber-300 border border-slate-700 hover:border-amber-500 transition flex items-center space-x-1 cursor-pointer">
+                <span>&#9889; TEST SURGE</span>
+            </button>
+
+            <!-- Sound Mute Toggle -->
+            <button id="sound-btn" onclick="toggleAudio()" title="Toggle Alarm Audio Sirens" class="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition cursor-pointer">
+                <svg id="sound-icon" class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                </svg>
+            </button>
+
+            <!-- Hardware WebSocket Status Badge -->
+            <div id="connection-status-badge" class="px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 flex items-center space-x-1.5 text-slate-400 font-mono text-[10px] font-bold">
+                <span id="conn-indicator-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                <span id="connection-status-text">DISCONNECTED</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- ========================================== -->
+    <!-- MAIN WORKSPACE: SIDEBAR + DIAGNOSTICS PANE -->
+    <!-- ========================================== -->
+    <div class="flex-1 flex overflow-hidden">
+
+        <!-- LEFT SIDEBAR: 6 FUNCTIONAL MONITORING SECTIONS -->
+        <aside class="w-60 flex-shrink-0 bg-slate-950/90 border-r border-slate-800 flex flex-col justify-between p-3 select-none">
+            <div>
+                <p class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 px-2.5 mb-2">Monitoring Sections</p>
+                <nav class="space-y-1" id="sidebar-nav">
+                    <button onclick="selectSection('overview')" data-section="overview" class="w-full flex items-center space-x-2.5 px-3 py-2 text-xs font-mono font-bold rounded-md bg-emerald-950/40 text-emerald-400 border border-emerald-500/30 transition cursor-pointer shadow-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+                        <span>Overview</span>
+                    </button>
+                    <button onclick="selectSection('nodes')" data-section="nodes" class="w-full flex items-center space-x-2.5 px-3 py-2 text-xs font-mono font-semibold rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 transition cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z"/></svg>
+                        <span>Nodes</span>
+                    </button>
+                    <button onclick="selectSection('displacement')" data-section="displacement" class="w-full flex items-center space-x-2.5 px-3 py-2 text-xs font-mono font-semibold rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 transition cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                        <span>Displacement</span>
+                    </button>
+                    <button onclick="selectSection('tilt_vibration')" data-section="tilt_vibration" class="w-full flex items-center space-x-2.5 px-3 py-2 text-xs font-mono font-semibold rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 transition cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                        <span>Tilt & vibration</span>
+                    </button>
+                    <button onclick="selectSection('gis_risk')" data-section="gis_risk" class="w-full flex items-center space-x-2.5 px-3 py-2 text-xs font-mono font-semibold rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 transition cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/></svg>
+                        <span>GIS & risk</span>
+                    </button>
+                    <button onclick="selectSection('alerts')" data-section="alerts" class="w-full flex items-center space-x-2.5 px-3 py-2 text-xs font-mono font-semibold rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 transition cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                        <span>Alerts</span>
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Bottom Host Info Box -->
+            <div class="pt-3 border-t border-slate-800 text-[10px] font-mono space-y-1.5 px-2 text-slate-400">
+                <p class="font-bold text-slate-500 uppercase tracking-widest text-[9px]">HOST</p>
+                <div class="flex justify-between">
+                    <span class="text-slate-500">Uptime</span>
+                    <span class="text-slate-200 font-bold tabular-nums" id="host-uptime">0 min</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-500">Nodes seen</span>
+                    <span class="text-emerald-400 font-bold tabular-nums" id="host-nodes-seen">2/2</span>
+                </div>
+                <div class="flex justify-between">
+                    <span class="text-slate-500">LoRa Gateway</span>
+                    <span class="text-cyan-400 font-bold">COM7 &#8226; USB</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- RIGHT CONTENT VIEWPORT: SCREEN-FITTED SPLIT TABS -->
+        <main id="main-content-area" class="flex-1 overflow-y-auto p-5 custom-scrollbar bg-slate-950">
+
+            <!-- ========================================== -->
+            <!-- TAB 1: OVERVIEW -->
+            <!-- ========================================== -->
+            <section id="view-overview" class="view-section space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-800/80">
+                    <div>
+                        <h2 class="text-base font-mono font-bold text-white tracking-wide">Sector 4 Geotechnical Stability Overview</h2>
+                        <p class="text-xs text-slate-400 font-sans mt-0.5">Continuous pit bench stability index, Bishop FoS limit state modeling &amp; sensor mesh synthesis</p>
+                    </div>
+                    <div class="mt-2 sm:mt-0 flex items-center space-x-2">
+                        <span class="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-500/40">
+                            SECTOR HEALTH: NOMINAL
+                        </span>
+                    </div>
+                </div>
+
+                <!-- 4 Top KPI Cards -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">Min Factor of Safety</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span id="overview-min-fos" class="text-2xl font-mono font-bold text-emerald-400 tabular-nums">2.38</span>
+                            <span class="text-[11px] font-mono text-slate-400">Limit: 1.50</span>
+                        </div>
+                        <span class="text-[10px] text-emerald-400/80 font-mono block mt-1">Stable Slope Equilibrium</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">Max Pit Velocity</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span id="overview-max-vel" class="text-2xl font-mono font-bold text-white tabular-nums">0.84</span>
+                            <span class="text-[11px] font-mono text-slate-400">mm/h</span>
+                        </div>
+                        <span class="text-[10px] text-slate-400 font-mono block mt-1">Creep Alarm: &gt; 15.0 mm/h</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">LoRa Mesh Network</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span id="overview-nodes-online" class="text-2xl font-mono font-bold text-cyan-400 tabular-nums">2/2</span>
+                            <span class="text-[11px] font-mono text-slate-400">Active</span>
+                        </div>
+                        <span class="text-[10px] text-slate-400 font-mono block mt-1">868MHz &#8226; 0.0% Packet Drop</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">Failure Probability</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span id="overview-fail-prob" class="text-2xl font-mono font-bold text-emerald-400 tabular-nums">0.8%</span>
+                            <span class="text-[11px] font-mono text-slate-400">Risk Low</span>
+                        </div>
+                        <span class="text-[10px] text-slate-400 font-mono block mt-1">Bishop Circular Slip Model</span>
+                    </div>
+                </div>
+
+                <!-- Dual Node Cards (Side-by-Side Comparison) -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- NODE 01 CARD -->
+                    <div class="glass-panel rounded-xl p-4 border border-slate-800 space-y-3">
+                        <div class="flex items-center justify-between pb-2 border-b border-slate-800/80">
+                            <div class="flex items-center space-x-2">
+                                <span id="dot-overview-node1" class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                                <span class="font-mono font-bold text-sm text-white">NODE 01 &#8212; Highwall Bench (+45m)</span>
+                            </div>
+                            <span id="badge-overview-node1" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">ONLINE</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 text-xs font-mono">
+                            <div class="p-2 rounded bg-slate-900/60 border border-slate-800">
+                                <span class="text-[10px] text-slate-500 block">Factor of Safety</span>
+                                <span id="overview-n1-fos" class="text-sm font-bold text-emerald-400 tabular-nums">2.50</span>
+                            </div>
+                            <div class="p-2 rounded bg-slate-900/60 border border-slate-800">
+                                <span class="text-[10px] text-slate-500 block">Tilt from Level</span>
+                                <span id="overview-n1-tilt" class="text-sm font-bold text-cyan-400 tabular-nums">1.04°</span>
+                            </div>
+                            <div class="p-2 rounded bg-slate-900/60 border border-slate-800">
+                                <span class="text-[10px] text-slate-500 block">Velocity</span>
+                                <span id="overview-n1-vel" class="text-sm font-bold text-white tabular-nums">0.42 mm/h</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1">
+                            <span>Vib RMS: <span id="overview-n1-vib" class="text-slate-200 font-bold tabular-nums">0.030 m/s²</span></span>
+                            <span>Battery: <span id="overview-n1-bat" class="text-emerald-400 font-bold tabular-nums">4.12V</span></span>
+                            <span>RF RSSI: <span id="overview-n1-rf" class="text-cyan-400 font-bold tabular-nums">-68 dBm</span></span>
+                        </div>
+                        <button onclick="selectSection('nodes'); setActiveNode('NODE_01');" class="w-full py-1.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-mono font-semibold text-slate-300 hover:text-white transition cursor-pointer">
+                            Open Node 01 Detailed Diagnostics &rarr;
+                        </button>
+                    </div>
+
+                    <!-- NODE 02 CARD -->
+                    <div class="glass-panel rounded-xl p-4 border border-slate-800 space-y-3">
+                        <div class="flex items-center justify-between pb-2 border-b border-slate-800/80">
+                            <div class="flex items-center space-x-2">
+                                <span id="dot-overview-node2" class="w-2.5 h-2.5 rounded-full bg-cyan-400"></span>
+                                <span class="font-mono font-bold text-sm text-white">NODE 02 &#8212; Sump Toe Bench (-15m)</span>
+                            </div>
+                            <span id="badge-overview-node2" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">ONLINE</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 text-xs font-mono">
+                            <div class="p-2 rounded bg-slate-900/60 border border-slate-800">
+                                <span class="text-[10px] text-slate-500 block">Factor of Safety</span>
+                                <span id="overview-n2-fos" class="text-sm font-bold text-emerald-400 tabular-nums">2.12</span>
+                            </div>
+                            <div class="p-2 rounded bg-slate-900/60 border border-slate-800">
+                                <span class="text-[10px] text-slate-500 block">Tilt from Level</span>
+                                <span id="overview-n2-tilt" class="text-sm font-bold text-cyan-400 tabular-nums">2.12°</span>
+                            </div>
+                            <div class="p-2 rounded bg-slate-900/60 border border-slate-800">
+                                <span class="text-[10px] text-slate-500 block">Velocity</span>
+                                <span id="overview-n2-vel" class="text-sm font-bold text-white tabular-nums">0.84 mm/h</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1">
+                            <span>Vib RMS: <span id="overview-n2-vib" class="text-slate-200 font-bold tabular-nums">0.028 m/s²</span></span>
+                            <span>Battery: <span id="overview-n2-bat" class="text-emerald-400 font-bold tabular-nums">4.08V</span></span>
+                            <span>RF RSSI: <span id="overview-n2-rf" class="text-cyan-400 font-bold tabular-nums">-72 dBm</span></span>
+                        </div>
+                        <button onclick="selectSection('nodes'); setActiveNode('NODE_02');" class="w-full py-1.5 rounded bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-mono font-semibold text-slate-300 hover:text-white transition cursor-pointer">
+                            Open Node 02 Detailed Diagnostics &rarr;
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Combined Factor of Safety Stability Trend Chart -->
+                <div class="glass-panel rounded-xl p-5 border border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h3 class="text-sm font-mono font-bold text-white tracking-wide">Factor of Safety (FoS) Slope Equilibrium Envelope</h3>
+                            <p class="mt-0.5 text-[11px] text-slate-400 font-sans">
+                                Dynamic limit equilibrium calculation computed via Bishop's Simplified Slice formulation across highwall slices. Safe equilibrium &gt; 1.50, limit state alert at 1.00.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="w-full h-64 relative">
+                        <canvas id="fosChart"></canvas>
+                    </div>
+                    <div class="flex items-center justify-start space-x-6 pt-2 text-[11px] font-mono text-slate-400 border-t border-slate-800/60">
+                        <div class="flex items-center space-x-2">
+                            <span class="w-3.5 h-0.5 bg-emerald-400 inline-block rounded-full"></span>
+                            <span class="text-slate-300">NODE 01 FoS</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="w-3.5 h-0.5 bg-cyan-400 inline-block rounded-full"></span>
+                            <span class="text-slate-300">NODE 02 FoS</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="w-3.5 h-0.5 bg-amber-400 inline-block border-b border-dashed border-amber-400"></span>
+                            <span class="text-amber-400 font-bold">Warning Threshold (1.50)</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="w-3.5 h-0.5 bg-rose-500 inline-block border-b border-dashed border-rose-400"></span>
+                            <span class="text-rose-400 font-bold">Critical Tripwire (1.00)</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================== -->
+            <!-- TAB 2: NODES -->
+            <!-- ========================================== -->
+            <section id="view-nodes" class="view-section hidden space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-800/80">
+                    <div>
+                        <h2 class="text-base font-mono font-bold text-white tracking-wide">Hardware Node Telemetry &amp; RF Mesh</h2>
+                        <p class="text-xs text-slate-400 font-sans mt-0.5">Embedded edge microcontroller status, MPPT solar charging rail &amp; LoRa RF signal strength</p>
+                    </div>
+                    <!-- Node Switcher Pill -->
+                    <div class="mt-2 sm:mt-0 flex items-center bg-slate-900 border border-slate-700 rounded-xl p-0.5 font-mono text-xs">
+                        <button onclick="setActiveNode('NODE_01')" id="btn-node-tab-1" class="px-3 py-1 font-bold rounded-lg bg-slate-800 text-white border border-slate-600 transition">
+                            NODE 01 (Highwall)
+                        </button>
+                        <button onclick="setActiveNode('NODE_02')" id="btn-node-tab-2" class="px-3 py-1 font-medium rounded-lg text-slate-400 hover:text-slate-200 transition">
+                            NODE 02 (Sump Toe)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4 Hardware KPI Cards for Selected Node -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">Battery Voltage</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span id="node-hw-battery" class="text-2xl font-mono font-bold text-emerald-400 tabular-nums">4.12 V</span>
+                            <span class="text-[11px] font-mono text-slate-400">98%</span>
+                        </div>
+                        <span class="text-[10px] text-emerald-400/80 font-mono block mt-1">LiFePO4 Cell Health OK</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">Solar Power &amp; Thermal</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span id="node-hw-solar" class="text-lg font-mono font-bold text-white">Float Charge</span>
+                        </div>
+                        <span id="node-hw-temp" class="text-[10px] text-slate-400 font-mono block mt-1">MCU Temp: 34.1°C</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">LoRa RF RSSI</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span id="node-hw-rssi" class="text-2xl font-mono font-bold text-cyan-400 tabular-nums">-68</span>
+                            <span class="text-[11px] font-mono text-slate-400">dBm</span>
+                        </div>
+                        <span class="text-[10px] text-cyan-400/80 font-mono block mt-1">Signal Margin: Excellent</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">Link SNR &amp; Loss</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span id="node-hw-snr" class="text-2xl font-mono font-bold text-emerald-400 tabular-nums">+9.8</span>
+                            <span class="text-[11px] font-mono text-slate-400">dB</span>
+                        </div>
+                        <span class="text-[10px] text-slate-400 font-mono block mt-1">Packet Loss: 0.0%</span>
+                    </div>
+                </div>
+
+                <!-- Hardware Architecture Spec Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800 space-y-1.5 text-xs font-mono">
+                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider block">Sensor Subsystem</span>
+                        <div class="flex justify-between text-slate-300"><span>IMU Core:</span> <span class="font-bold text-white">MPU6050 6-DoF</span></div>
+                        <div class="flex justify-between text-slate-300"><span>Sampling Rate:</span> <span class="text-white">100 Hz Continuous</span></div>
+                        <div class="flex justify-between text-slate-300"><span>Gravity Scale:</span> <span class="text-emerald-400 font-bold">1.000g Calibrated</span></div>
+                    </div>
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800 space-y-1.5 text-xs font-mono">
+                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider block">LoRa Wireless Transceiver</span>
+                        <div class="flex justify-between text-slate-300"><span>RF IC:</span> <span class="font-bold text-white">Semtech SX1262</span></div>
+                        <div class="flex justify-between text-slate-300"><span>Carrier:</span> <span class="text-white">868.100 MHz (IN865)</span></div>
+                        <div class="flex justify-between text-slate-300"><span>Spreading Factor:</span> <span class="text-cyan-400 font-bold">SF7 / BW 125kHz</span></div>
+                    </div>
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800 space-y-1.5 text-xs font-mono">
+                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider block">Power Supply &amp; Storage</span>
+                        <div class="flex justify-between text-slate-300"><span>Solar Cell:</span> <span class="font-bold text-white">5.5V / 2W Mono</span></div>
+                        <div class="flex justify-between text-slate-300"><span>Charge Controller:</span> <span class="text-white">CN3791 MPPT</span></div>
+                        <div class="flex justify-between text-slate-300"><span>Operating Rail:</span> <span class="text-emerald-400 font-bold">3.30V Low-Noise LDO</span></div>
+                    </div>
+                </div>
+
+                <!-- LoRa RF Link Quality Time Series Chart -->
+                <div class="glass-panel rounded-xl p-5 border border-slate-800 space-y-3">
+                    <h3 class="text-sm font-mono font-bold text-white tracking-wide">LoRa RF Link Signal Quality Over Time</h3>
+                    <div class="w-full h-64 relative">
+                        <canvas id="rfChart"></canvas>
+                    </div>
+                    <div class="flex items-center justify-start space-x-6 pt-2 text-[11px] font-mono text-slate-400 border-t border-slate-800/60">
+                        <div class="flex items-center space-x-2">
+                            <span class="w-3.5 h-0.5 bg-cyan-400 inline-block rounded-full"></span>
+                            <span class="text-slate-300">RSSI dBm (left axis)</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="w-3.5 h-0.5 bg-emerald-400 inline-block rounded-full"></span>
+                            <span class="text-slate-300">SNR dB (right axis)</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================== -->
+            <!-- TAB 3: DISPLACEMENT -->
+            <!-- ========================================== -->
+            <section id="view-displacement" class="view-section hidden space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-800/80">
+                    <div>
+                        <h2 class="text-base font-mono font-bold text-white tracking-wide">Geotechnical Displacement &amp; Kinematic Creep</h2>
+                        <p class="text-xs text-slate-400 font-sans mt-0.5">Multi-directional slope displacement vectors, shear strain rate &amp; Saito 3-stage failure forecasting</p>
+                    </div>
+                    <!-- Node Switcher Pill -->
+                    <div class="mt-2 sm:mt-0 flex items-center bg-slate-900 border border-slate-700 rounded-xl p-0.5 font-mono text-xs">
+                        <button onclick="setActiveNode('NODE_01')" id="btn-disp-tab-1" class="px-3 py-1 font-bold rounded-lg bg-slate-800 text-white border border-slate-600 transition">
+                            NODE 01 (Highwall)
+                        </button>
+                        <button onclick="setActiveNode('NODE_02')" id="btn-disp-tab-2" class="px-3 py-1 font-medium rounded-lg text-slate-400 hover:text-slate-200 transition">
+                            NODE 02 (Sump Toe)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 4 Kinematic KPI Cards -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">Relative Displacement</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span id="disp-val-rel" class="text-2xl font-mono font-bold text-cyan-400 tabular-nums">0.012 m</span>
+                        </div>
+                        <span class="text-[10px] text-slate-400 font-mono block mt-1">Vector Magnitude from Datum</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">MDS Shear Strain</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span id="disp-val-mds" class="text-2xl font-mono font-bold text-white tabular-nums">0.008 m</span>
+                        </div>
+                        <span class="text-[10px] text-slate-400 font-mono block mt-1">Shear Plane Differential</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">Kinematic Velocity</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span id="disp-val-vel" class="text-2xl font-mono font-bold text-emerald-400 tabular-nums">0.42</span>
+                            <span class="text-[11px] font-mono text-slate-400">mm/h</span>
+                        </div>
+                        <span class="text-[10px] text-slate-400 font-mono block mt-1">Limit Threshold: 15.0 mm/h</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">Dynamic Acceleration</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span id="disp-val-acc" class="text-2xl font-mono font-bold text-white tabular-nums">0.002</span>
+                            <span class="text-[11px] font-mono text-slate-400">mm/s²</span>
+                        </div>
+                        <span class="text-[10px] text-emerald-400/80 font-mono block mt-1">Zero Acceleration = Steady State</span>
+                    </div>
+                </div>
+
+                <!-- Saito 3-Stage Creep Model Prognosis Box -->
+                <div class="glass-panel rounded-xl p-4 border border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <h4 class="text-xs font-mono font-bold uppercase tracking-wider text-white">Saito Creep Slope Failure Forecast</h4>
+                            <p class="text-[11px] text-slate-400 font-sans mt-0.5">Empirical tertiary creep time-to-failure forecasting derived from inverse rate of displacement (1/v)</p>
+                        </div>
+                        <span class="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">
+                            STAGE I: PRIMARY TRANSIENT CREEP
+                        </span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 text-center text-xs font-mono pt-1">
+                        <div class="p-2.5 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-300">
+                            <span class="font-bold block text-sm">Stage I: Primary</span>
+                            <span class="text-[10px] opacity-80">Decelerating transient creep [ACTIVE]</span>
+                        </div>
+                        <div class="p-2.5 rounded bg-slate-900/60 border border-slate-800 text-slate-500">
+                            <span class="font-bold block text-sm">Stage II: Secondary</span>
+                            <span class="text-[10px]">Constant steady-state rate</span>
+                        </div>
+                        <div class="p-2.5 rounded bg-slate-900/60 border border-slate-800 text-slate-500">
+                            <span class="font-bold block text-sm">Stage III: Tertiary</span>
+                            <span class="text-[10px]">Accelerating collapse phase</span>
+                        </div>
+                    </div>
+                    <div class="flex items-center justify-between text-xs font-mono text-slate-400 pt-1">
+                        <span>Inverse Velocity (1/v): <span class="text-white font-bold tabular-nums">2.38 h/mm</span></span>
+                        <span>Time-to-Failure (tf): <span class="text-emerald-400 font-bold">No tertiary acceleration detected (&gt; 30 days)</span></span>
+                    </div>
+                </div>
+
+                <!-- Cumulative Displacement & Velocity Time Series Chart -->
+                <div class="glass-panel rounded-xl p-5 border border-slate-800 space-y-3">
+                    <h3 class="text-sm font-mono font-bold text-white tracking-wide">Cumulative Displacement &amp; Kinematic Velocity Chart</h3>
+                    <div class="w-full h-64 relative">
+                        <canvas id="dispChart"></canvas>
+                    </div>
+                    <div class="flex items-center justify-start space-x-6 pt-2 text-[11px] font-mono text-slate-400 border-t border-slate-800/60">
+                        <div class="flex items-center space-x-2">
+                            <span class="w-3.5 h-0.5 bg-cyan-400 inline-block rounded-full"></span>
+                            <span class="text-slate-300">Displacement (mm, left axis)</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="w-3.5 h-0.5 bg-amber-400 inline-block rounded-full"></span>
+                            <span class="text-slate-300">Velocity (mm/h, right axis)</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================== -->
+            <!-- TAB 4: TILT & VIBRATION (Reference View) -->
+            <!-- ========================================== -->
+            <section id="view-tilt_vibration" class="view-section hidden space-y-4">
+                <!-- Top Toolbar: Node Selector & Time Windows -->
+                <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800/80">
+                    <!-- Node Selector Buttons -->
+                    <div class="flex items-center space-x-2">
+                        <div class="flex items-center bg-slate-900 border border-slate-700 rounded-xl p-0.5 font-mono text-xs select-none">
+                            <button onclick="setActiveNode('NODE_01')" id="btn-node-1" class="px-3 py-1 font-bold rounded-lg bg-slate-800 text-white border border-slate-600 transition flex items-center space-x-1.5 cursor-pointer">
+                                <span id="dot-node-1" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+                                <span>Node 1</span>
+                            </button>
+                            <button onclick="setActiveNode('NODE_02')" id="btn-node-2" class="px-3 py-1 font-medium rounded-lg text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5 cursor-pointer">
+                                <span id="dot-node-2" class="w-2 h-2 rounded-full bg-cyan-400"></span>
+                                <span>Node 2</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Time Window Toggle Buttons -->
+                    <div class="flex items-center bg-slate-900 border border-slate-800 rounded-xl p-0.5 font-mono text-[11px] text-slate-400 select-none">
+                        <button onclick="setTimeWindow(10)" data-window="10" class="px-2.5 py-0.5 rounded-lg hover:text-white transition">10m</button>
+                        <button onclick="setTimeWindow(30)" data-window="30" class="px-2.5 py-0.5 rounded-lg hover:text-white transition">30m</button>
+                        <button onclick="setTimeWindow(60)" data-window="60" class="px-2.5 py-0.5 rounded-lg bg-slate-800 text-white font-bold border border-slate-700 transition">1h</button>
+                        <button onclick="setTimeWindow(360)" data-window="360" class="px-2.5 py-0.5 rounded-lg hover:text-white transition">6h</button>
+                        <button onclick="setTimeWindow(1440)" data-window="1440" class="px-2.5 py-0.5 rounded-lg hover:text-white transition">24h</button>
+                    </div>
+                </div>
+
+                <!-- 4 Geotechnical KPI Metric Cards -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800 flex flex-col justify-between">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500">Tilt from level</span>
+                        <div class="my-1">
+                            <span id="kpi-tilt" class="text-3xl font-mono font-bold text-white tabular-nums tracking-tight">1.04°</span>
+                        </div>
+                        <span id="kpi-tilt-sub" class="text-[10px] font-mono text-slate-400">1.04° at 09:29</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800 flex flex-col justify-between">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500">Relative Deviation (Δθ)</span>
+                        <div class="my-1">
+                            <span id="kpi-change" class="text-3xl font-mono font-bold text-white tabular-nums tracking-tight">0.015°</span>
+                        </div>
+                        <span id="kpi-change-sub" class="text-[10px] font-mono text-slate-400">max 0.018° at 09:14</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800 flex flex-col justify-between">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500">Vibration</span>
+                        <div class="my-1">
+                            <span id="kpi-vib-rms" class="text-3xl font-mono font-bold text-white tabular-nums tracking-tight">0.030 m/s²</span>
+                        </div>
+                        <span id="kpi-vib-sub" class="text-[10px] font-mono text-slate-400">peak 0.045 g at 09:26</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800 flex flex-col justify-between">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500">Dominant frequency</span>
+                        <div class="my-1">
+                            <span id="kpi-dom-freq" class="text-3xl font-mono font-bold text-white tabular-nums tracking-tight">67.2 Hz</span>
+                        </div>
+                        <span id="kpi-dom-freq-sub" class="text-[10px] font-mono text-slate-400">sweep min 0.010, max 0.052</span>
+                    </div>
+                </div>
+
+                <!-- Auxiliary Data Strip -->
+                <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs font-mono bg-slate-900/50 p-3 rounded-lg border border-slate-800 text-slate-300">
+                    <div>
+                        <span class="text-slate-500 block text-[10px]">Head pitch / roll</span>
+                        <span id="aux-pitch-roll" class="font-bold text-white tabular-nums">0.45° / -0.82°</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 block text-[10px]">Peak dynamic vibration</span>
+                        <span id="aux-vib-peak" class="font-bold text-white tabular-nums">0.045 g</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 block text-[10px]">Factor of safety</span>
+                        <span id="aux-fos" class="text-emerald-400 font-bold tabular-nums">2.50 (SAFE)</span>
+                    </div>
+                    <div>
+                        <span class="text-slate-500 block text-[10px]">Power / RF</span>
+                        <span id="aux-power-rf" class="font-bold text-cyan-400 tabular-nums">4.12V &#8226; -68 dBm</span>
+                    </div>
+                </div>
+
+                <!-- Section 1: Tilt Over Time -->
+                <div class="glass-panel rounded-xl p-5 border border-slate-800 space-y-3">
+                    <div>
+                        <h3 class="text-sm font-mono font-bold text-white tracking-wide">Tilt over time</h3>
+                        <p class="mt-1 text-[11px] text-slate-400 font-sans leading-relaxed">
+                            Angles between vectors, not raw pitch and roll. This head is mounted inverted, so its raw roll reads about -174° &#8212; that is orientation, not tilt, and showing it would suggest a node lying on its side. Both traces here read 0 for a level, still node. They are ratios of accelerometer axes, so the sensor's scale error cancels exactly.
+                        </p>
+                    </div>
+
+                    <!-- Dual Axis Chart Canvas -->
+                    <div class="w-full h-72 relative">
+                        <canvas id="tiltChart"></canvas>
+                    </div>
+
+                    <!-- Dual-Axis Legend -->
+                    <div class="flex items-center justify-start space-x-6 pt-2 text-[11px] font-mono text-slate-400 border-t border-slate-800/60">
+                        <div class="flex items-center space-x-2">
+                            <span class="w-3.5 h-0.5 bg-cyan-400 inline-block rounded-full"></span>
+                            <span class="text-slate-300">Tilt from level (left axis)</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="w-3.5 h-0.5 bg-emerald-400 inline-block rounded-full"></span>
+                            <span class="text-slate-300">Relative Deviation Δθ (right axis)</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Vibration Over Time -->
+                <div class="glass-panel rounded-xl p-5 border border-slate-800 space-y-3">
+                    <div>
+                        <h3 class="text-sm font-mono font-bold text-white tracking-wide">Vibration</h3>
+                        <p class="mt-1 text-[11px] text-slate-400 font-sans leading-relaxed">
+                            RMS and peak of the accelerometer's AC component, per sweep. Amplitudes are understated by roughly 14.5% until the accelerometer is calibrated against gravity.
+                        </p>
+                    </div>
+
+                    <!-- Vibration Chart Canvas -->
+                    <div class="w-full h-56 relative">
+                        <canvas id="vibChart"></canvas>
+                    </div>
+
+                    <!-- Vibration Legend -->
+                    <div class="flex items-center justify-start space-x-6 pt-2 text-[11px] font-mono text-slate-400 border-t border-slate-800/60">
+                        <div class="flex items-center space-x-2">
+                            <span class="w-3.5 h-0.5 bg-emerald-400 inline-block rounded-full"></span>
+                            <span class="text-slate-300">Vibration RMS (m/s²)</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <span class="w-3.5 h-0.5 bg-amber-400 inline-block rounded-full"></span>
+                            <span class="text-slate-300">Peak Dynamic Vibration (g)</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================== -->
+            <!-- TAB 5: GIS & RISK -->
+            <!-- ========================================== -->
+            <section id="view-gis_risk" class="view-section hidden space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-800/80">
+                    <div>
+                        <h2 class="text-base font-mono font-bold text-white tracking-wide">Pit Spatial Stratigraphy &amp; Geotechnical Risk</h2>
+                        <p class="text-xs text-slate-400 font-sans mt-0.5">Open-cast bench elevation stratification, Kriging interpolation &amp; slope stability criteria</p>
+                    </div>
+                    <span class="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-950 text-cyan-400 border border-cyan-800">
+                        SURVEY DATUM: WGS84 / UTM 44N
+                    </span>
+                </div>
+
+                <!-- 3 Top Stat Cards -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800 font-mono text-xs">
+                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider block">Pit Center Coordinates</span>
+                        <span class="text-white font-bold text-sm block mt-1">11.5975° N, 79.4892° E</span>
+                        <span class="text-[10px] text-slate-400 block mt-0.5">NLC Neyveli Sector 4 Pit Floor</span>
+                    </div>
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800 font-mono text-xs">
+                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider block">Kriging Spatial Model</span>
+                        <span class="text-cyan-400 font-bold text-sm block mt-1">Spherical Kernel</span>
+                        <span class="text-[10px] text-slate-400 block mt-0.5">Sill: 0.82 | Range: 140m | Nugget: 0.04</span>
+                    </div>
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800 font-mono text-xs">
+                        <span class="text-[10px] text-slate-500 uppercase font-bold tracking-wider block">Critical Slip Circle</span>
+                        <span class="text-emerald-400 font-bold text-sm block mt-1">Radius: 38.5 m</span>
+                        <span class="text-[10px] text-slate-400 block mt-0.5">Morgenstern-Price Circular Surface</span>
+                    </div>
+                </div>
+
+                <!-- Pit Bench Stratification Table -->
+                <div class="glass-panel rounded-xl p-4 border border-slate-800 space-y-3">
+                    <h3 class="text-sm font-mono font-bold text-white tracking-wide">Sector 4 Bench Stratigraphy &amp; Live Stability Rating</h3>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-xs font-mono text-slate-300">
+                            <thead class="bg-slate-900/80 text-slate-400 uppercase text-[10px] border-b border-slate-800">
+                                <tr>
+                                    <th class="p-2.5">Bench Elevation</th>
+                                    <th class="p-2.5">Geological Formation</th>
+                                    <th class="p-2.5">Factor of Safety</th>
+                                    <th class="p-2.5">Status</th>
+                                    <th class="p-2.5">Monitoring Method</th>
+                                    <th class="p-2.5">Safety Protocol</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-800/60">
+                                <tr>
+                                    <td class="p-2.5 font-bold text-white">+65m Crest</td>
+                                    <td class="p-2.5">Basalt Overburden</td>
+                                    <td class="p-2.5 text-emerald-400 font-bold tabular-nums">2.45</td>
+                                    <td class="p-2.5"><span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px]">STABLE</span></td>
+                                    <td class="p-2.5 text-slate-400">Total Station Survey</td>
+                                    <td class="p-2.5 text-slate-400">Nominal Inspection</td>
+                                </tr>
+                                <tr class="bg-emerald-950/20">
+                                    <td class="p-2.5 font-bold text-emerald-300">+45m Bench 1</td>
+                                    <td class="p-2.5">Clay-Lignite Overburden</td>
+                                    <td class="p-2.5 text-emerald-400 font-bold tabular-nums" id="gis-b1-fos">2.50</td>
+                                    <td class="p-2.5"><span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px]">ACTIVE SENSOR</span></td>
+                                    <td class="p-2.5 text-white font-bold">NODE 01 (LoRa IMU)</td>
+                                    <td class="p-2.5 text-emerald-400">Real-Time Telemetry</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold text-white">+20m Bench 2</td>
+                                    <td class="p-2.5">Sandstone Interbed</td>
+                                    <td class="p-2.5 text-emerald-400 font-bold tabular-nums">2.10</td>
+                                    <td class="p-2.5"><span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px]">STABLE</span></td>
+                                    <td class="p-2.5 text-slate-400">Secondary Radar Reflector</td>
+                                    <td class="p-2.5 text-slate-400">Haul Road Clear</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold text-white">0m Pit Floor</td>
+                                    <td class="p-2.5">Lignite Seam Top</td>
+                                    <td class="p-2.5 text-emerald-400 font-bold tabular-nums">1.85</td>
+                                    <td class="p-2.5"><span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px]">STABLE</span></td>
+                                    <td class="p-2.5 text-slate-400">Laser Profilometer</td>
+                                    <td class="p-2.5 text-slate-400">Excavator Transit OK</td>
+                                </tr>
+                                <tr class="bg-cyan-950/20">
+                                    <td class="p-2.5 font-bold text-cyan-300">-15m Sump Toe</td>
+                                    <td class="p-2.5">Saturated Clayey Sand</td>
+                                    <td class="p-2.5 text-emerald-400 font-bold tabular-nums" id="gis-b2-fos">2.12</td>
+                                    <td class="p-2.5"><span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px]">ACTIVE SENSOR</span></td>
+                                    <td class="p-2.5 text-white font-bold">NODE 02 (LoRa IMU)</td>
+                                    <td class="p-2.5 text-emerald-400">Real-Time Telemetry</td>
+                                </tr>
+                                <tr>
+                                    <td class="p-2.5 font-bold text-white">-30m Deep Sump</td>
+                                    <td class="p-2.5">Hydrostatic Sump Floor</td>
+                                    <td class="p-2.5 text-emerald-400 font-bold tabular-nums">1.65</td>
+                                    <td class="p-2.5"><span class="px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px]">MONITORED</span></td>
+                                    <td class="p-2.5 text-slate-400">Vibrating Wire Piezometer</td>
+                                    <td class="p-2.5 text-slate-400">Dewatering Pumps Running</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Geotechnical Risk Action Matrix -->
+                <div class="glass-panel rounded-xl p-4 border border-slate-800 space-y-2">
+                    <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-white">Geotechnical Factor of Safety Action Hierarchy</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-4 gap-2 text-xs font-mono pt-1">
+                        <div class="p-2.5 rounded bg-emerald-950/30 border border-emerald-500/40 text-emerald-300">
+                            <span class="font-bold block">FoS &gt; 1.50</span>
+                            <span class="text-[10px]">Normal open-cast mining operations authorized</span>
+                        </div>
+                        <div class="p-2.5 rounded bg-amber-950/30 border border-amber-500/40 text-amber-300">
+                            <span class="font-bold block">1.20 &le; FoS &lt; 1.50</span>
+                            <span class="text-[10px]">Restrict heavy haul trucks on lower benches</span>
+                        </div>
+                        <div class="p-2.5 rounded bg-orange-950/30 border border-orange-500/40 text-orange-300">
+                            <span class="font-bold block">1.00 &le; FoS &lt; 1.20</span>
+                            <span class="text-[10px]">Warning state: Evacuate personnel from pit floor</span>
+                        </div>
+                        <div class="p-2.5 rounded bg-rose-950/30 border border-rose-500/40 text-rose-300">
+                            <span class="font-bold block">FoS &lt; 1.00</span>
+                            <span class="text-[10px]">CRITICAL: Trigger siren &amp; complete pit evacuation</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========================================== -->
+            <!-- TAB 6: ALERTS -->
+            <!-- ========================================== -->
+            <section id="view-alerts" class="view-section hidden space-y-4">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between pb-2 border-b border-slate-800/80">
+                    <div>
+                        <h2 class="text-base font-mono font-bold text-white tracking-wide">Safety Tripwires &amp; Incident Audit Register</h2>
+                        <p class="text-xs text-slate-400 font-sans mt-0.5">DGMS geotechnical tripwires, threshold excursions &amp; emergency muster checklist</p>
+                    </div>
+                    <span id="tripwire-status-badge" class="px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">
+                        ALL TRIPWIRES NORMAL
+                    </span>
+                </div>
+
+                <!-- 4 Safety Tripwire Cards -->
+                <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">Slope Velocity Tripwire</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span class="text-xl font-mono font-bold text-emerald-400 tabular-nums">0.84 mm/h</span>
+                        </div>
+                        <span class="text-[10px] text-emerald-400/80 font-mono block mt-1">PASS &#8226; Limit: 15.0 mm/h</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">Factor of Safety Limit</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span class="text-xl font-mono font-bold text-emerald-400 tabular-nums">2.38</span>
+                        </div>
+                        <span class="text-[10px] text-emerald-400/80 font-mono block mt-1">PASS &#8226; Limit: &lt; 1.00</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">Vibration Peak Tripwire</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span class="text-xl font-mono font-bold text-emerald-400 tabular-nums">0.045 g</span>
+                        </div>
+                        <span class="text-[10px] text-emerald-400/80 font-mono block mt-1">PASS &#8226; Limit: 0.20 g</span>
+                    </div>
+
+                    <div class="glass-panel rounded-xl p-3.5 border border-slate-800">
+                        <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 block">Angular Divergence</span>
+                        <div class="flex items-baseline space-x-2 mt-1">
+                            <span class="text-xl font-mono font-bold text-emerald-400 tabular-nums">2.12°</span>
+                        </div>
+                        <span class="text-[10px] text-emerald-400/80 font-mono block mt-1">PASS &#8226; Limit: 5.0°</span>
+                    </div>
+                </div>
+
+                <!-- Live Geotechnical Incident Audit Log -->
+                <div class="glass-panel rounded-xl p-4 border border-slate-800 space-y-3">
+                    <div class="flex items-center justify-between pb-2 border-b border-slate-800">
+                        <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-white">Live Geotechnical Audit Register</h3>
+                        <span class="text-[10px] font-mono text-slate-400">DGMS Statutory Log</span>
+                    </div>
+                    <div id="alerts-audit-log" class="max-h-56 overflow-y-auto text-xs font-mono space-y-2 custom-scrollbar text-slate-300">
+                        <div class="p-2 rounded bg-slate-900/60 border border-slate-800 flex items-center justify-between">
+                            <span class="text-slate-400">[SYSTEM INIT]</span>
+                            <span class="text-slate-300">Telemetry gateway established on COM7 (USB CDC-ACM)</span>
+                            <span class="px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 text-[10px]">NOMINAL</span>
+                        </div>
+                        <div class="p-2 rounded bg-slate-900/60 border border-slate-800 flex items-center justify-between">
+                            <span class="text-slate-400">[NODE 01 SYNC]</span>
+                            <span class="text-slate-300">Highwall Bench (+45m) IMU calibrated with FoS 2.50</span>
+                            <span class="px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 text-[10px]">NORMAL</span>
+                        </div>
+                        <div class="p-2 rounded bg-slate-900/60 border border-slate-800 flex items-center justify-between">
+                            <span class="text-slate-400">[NODE 02 SYNC]</span>
+                            <span class="text-slate-300">Sump Toe Bench (-15m) IMU calibrated with FoS 2.12</span>
+                            <span class="px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-400 text-[10px]">NORMAL</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Emergency Evacuation Protocol (SOP Checklist) -->
+                <div class="glass-panel rounded-xl p-4 border border-slate-800 space-y-3">
+                    <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-white">Mine Safety Protocol (SOP Checklist)</h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono text-slate-300">
+                        <div class="p-3 rounded bg-slate-900/40 border border-slate-800 flex items-start space-x-2.5">
+                            <span class="text-emerald-400 font-bold">&#10003;</span>
+                            <div>
+                                <span class="text-white font-bold block">1. Automated Audible Sirens</span>
+                                <span class="text-[11px] text-slate-400">High-intensity 120dB horn arrays at Crest and Pit Floor.</span>
+                            </div>
+                        </div>
+                        <div class="p-3 rounded bg-slate-900/40 border border-slate-800 flex items-start space-x-2.5">
+                            <span class="text-emerald-400 font-bold">&#10003;</span>
+                            <div>
+                                <span class="text-white font-bold block">2. Heavy Equipment Egress</span>
+                                <span class="text-[11px] text-slate-400">Haul truck egress clear on Main Ramp (+20m Bench 2).</span>
+                            </div>
+                        </div>
+                        <div class="p-3 rounded bg-slate-900/40 border border-slate-800 flex items-start space-x-2.5">
+                            <span class="text-emerald-400 font-bold">&#10003;</span>
+                            <div>
+                                <span class="text-white font-bold block">3. Personnel Muster Verification</span>
+                                <span class="text-[11px] text-slate-400">Designated North Highwall Muster Shelter verified operational.</span>
+                            </div>
+                        </div>
+                        <div class="p-3 rounded bg-slate-900/40 border border-slate-800 flex items-start space-x-2.5">
+                            <span class="text-emerald-400 font-bold">&#10003;</span>
+                            <div>
+                                <span class="text-white font-bold block">4. DGMS Regulatory Dispatch</span>
+                                <span class="text-[11px] text-slate-400">Automated SMS / Email dispatch to Mines Safety Directorate.</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+        </main>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- JAVASCRIPT ENGINE & REAL-TIME WEBSOCKET -->
+    <!-- ========================================== -->
+    <script>
+        // Navigation Handler (Compatible with both file:/// and http://)
+        function navigateToOperator() {
+            if (window.location.protocol === 'file:') {
+                window.location.href = 'index.html';
+            } else if (window.location.pathname.startsWith('/frontend')) {
+                window.location.href = 'index.html';
+            } else {
+                window.location.href = '/';
+            }
+        }
+
+        // State
+        let currentSection = 'overview';
+        let activeNodeId = 'NODE_01';
+        let timeWindowMinutes = 60;
+        let uptimeSeconds = 0;
+        let ws = null;
+        let pingStartTime = 0;
+        let pingInterval = null;
+        let audioMuted = false;
+        let audioCtx = null;
+        let globalNodesData = {};
+
+        // Historical Data Buffers (Per Node)
+        const telemetryHistory = {
+            'NODE_01': { timestamps: [], tiltLevel: [], changeRef: [], vibRms: [], vibPeak: [], fos: [], rssi: [], snr: [], disp: [], vel: [] },
+            'NODE_02': { timestamps: [], tiltLevel: [], changeRef: [], vibRms: [], vibPeak: [], fos: [], rssi: [], snr: [], disp: [], vel: [] },
+            'NODE_03': { timestamps: [], tiltLevel: [], changeRef: [], vibRms: [], vibPeak: [], fos: [], rssi: [], snr: [], disp: [], vel: [] }
+        };
+
+        // Pre-fill baseline data points so graphs look rich immediately
+        const now = Date.now();
+        for (let i = 24; i >= 0; i--) {
+            const t = new Date(now - i * 15000);
+            const timeLabel = t.toTimeString().split(' ')[0];
+            
+            // NODE_01 Baseline
+            telemetryHistory['NODE_01'].timestamps.push(timeLabel);
+            telemetryHistory['NODE_01'].tiltLevel.push(1.04);
+            telemetryHistory['NODE_01'].changeRef.push(0.015);
+            telemetryHistory['NODE_01'].vibRms.push(0.030);
+            telemetryHistory['NODE_01'].vibPeak.push(0.045);
+            telemetryHistory['NODE_01'].fos.push(2.50);
+            telemetryHistory['NODE_01'].rssi.push(-68);
+            telemetryHistory['NODE_01'].snr.push(9.8);
+            telemetryHistory['NODE_01'].disp.push(12.0);
+            telemetryHistory['NODE_01'].vel.push(0.42);
+
+            // NODE_02 Baseline
+            telemetryHistory['NODE_02'].timestamps.push(timeLabel);
+            telemetryHistory['NODE_02'].tiltLevel.push(2.12);
+            telemetryHistory['NODE_02'].changeRef.push(0.018);
+            telemetryHistory['NODE_02'].vibRms.push(0.028);
+            telemetryHistory['NODE_02'].vibPeak.push(0.040);
+            telemetryHistory['NODE_02'].fos.push(2.12);
+            telemetryHistory['NODE_02'].rssi.push(-72);
+            telemetryHistory['NODE_02'].snr.push(8.4);
+            telemetryHistory['NODE_02'].disp.push(14.5);
+            telemetryHistory['NODE_02'].vel.push(0.84);
+
+            // NODE_03 Baseline
+            telemetryHistory['NODE_03'].timestamps.push(timeLabel);
+            telemetryHistory['NODE_03'].tiltLevel.push(0.92);
+            telemetryHistory['NODE_03'].changeRef.push(0.012);
+            telemetryHistory['NODE_03'].vibRms.push(0.022);
+            telemetryHistory['NODE_03'].vibPeak.push(0.035);
+            telemetryHistory['NODE_03'].fos.push(2.50);
+            telemetryHistory['NODE_03'].rssi.push(-67);
+            telemetryHistory['NODE_03'].snr.push(9.1);
+            telemetryHistory['NODE_03'].disp.push(8.5);
+            telemetryHistory['NODE_03'].vel.push(0.25);
+        }
+
+        // ==========================================
+        // SIDEBAR NAVIGATION TAB CONTROLLER
+        // ==========================================
+        function selectSection(sectionKey) {
+            currentSection = sectionKey;
+
+            // 1. Update Sidebar Buttons Styling
+            const navButtons = document.querySelectorAll('#sidebar-nav button');
+            navButtons.forEach(btn => {
+                const targetKey = btn.getAttribute('data-section');
+                if (targetKey === sectionKey) {
+                    btn.className = "w-full flex items-center space-x-2.5 px-3 py-2 text-xs font-mono font-bold rounded-md bg-emerald-950/40 text-emerald-400 border border-emerald-500/30 transition cursor-pointer shadow-sm";
+                } else {
+                    btn.className = "w-full flex items-center space-x-2.5 px-3 py-2 text-xs font-mono font-semibold rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-900/60 transition cursor-pointer";
+                }
+            });
+
+            // 2. Hide all view containers and show target view
+            const views = document.querySelectorAll('.view-section');
+            views.forEach(v => {
+                v.classList.add('hidden');
+            });
+            const activeView = document.getElementById(`view-${sectionKey}`);
+            if (activeView) {
+                activeView.classList.remove('hidden');
+            }
+
+            // 3. Trigger resize on Chart.js instances so they adapt cleanly to container
+            setTimeout(() => {
+                if (sectionKey === 'overview' && fosChartInstance) {
+                    fosChartInstance.resize();
+                    fosChartInstance.update('none');
+                } else if (sectionKey === 'nodes' && rfChartInstance) {
+                    rfChartInstance.resize();
+                    rfChartInstance.update('none');
+                } else if (sectionKey === 'displacement' && dispChartInstance) {
+                    dispChartInstance.resize();
+                    dispChartInstance.update('none');
+                } else if (sectionKey === 'tilt_vibration') {
+                    if (tiltChartInstance) { tiltChartInstance.resize(); tiltChartInstance.update('none'); }
+                    if (vibChartInstance) { vibChartInstance.resize(); vibChartInstance.update('none'); }
+                }
+            }, 50);
+        }
+
+        // Clock & Uptime loop
+        setInterval(() => {
+            uptimeSeconds++;
+            const hrs = String(Math.floor(uptimeSeconds / 3600)).padStart(2, '0');
+            const mins = String(Math.floor((uptimeSeconds % 3600) / 60)).padStart(2, '0');
+            const secs = String(uptimeSeconds % 60).padStart(2, '0');
+            
+            const navUptime = document.getElementById('nav-uptime');
+            if (navUptime) navUptime.textContent = `${hrs}:${mins}:${secs}`;
+            
+            const hostUptime = document.getElementById('host-uptime');
+            if (hostUptime) hostUptime.textContent = `${Math.floor(uptimeSeconds / 60)} min`;
+        }, 1000);
+
+        // Sound Synthesizer
+        function playAlarmSiren() {
+            if (audioMuted) return;
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+                const nowT = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(880, nowT);
+                osc.frequency.exponentialRampToValueAtTime(440, nowT + 0.35);
+                gain.gain.setValueAtTime(0.15, nowT);
+                gain.gain.exponentialRampToValueAtTime(0.01, nowT + 0.35);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start(nowT);
+                osc.stop(nowT + 0.35);
+            } catch(e) {}
+        }
+
+        function toggleAudio() {
+            audioMuted = !audioMuted;
+            const icon = document.getElementById('sound-icon');
+            if (icon) {
+                icon.className = audioMuted ? "w-3.5 h-3.5 text-slate-500" : "w-3.5 h-3.5 text-emerald-400";
+            }
+        }
+
+        function triggerSimulatedMotion() {
+            fetch('/api/trigger_movement', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ node_id: activeNodeId, tilt_spike: 6.8, vib_spike: 0.65 })
+            }).then(r => r.json()).then(res => {
+                console.log("[SIMULATOR RESULT]", res);
+                playAlarmSiren();
+            }).catch(e => console.error(e));
+        }
+
+        // ==========================================
+        // CHART.JS INITIALIZATION
+        // ==========================================
+        let tiltChartInstance = null;
+        let vibChartInstance = null;
+        let fosChartInstance = null;
+        let rfChartInstance = null;
+        let dispChartInstance = null;
+
+        function initCharts() {
+            // 1. FoS Comparison Chart (Overview Tab)
+            const ctxFos = document.getElementById('fosChart')?.getContext('2d');
+            if (ctxFos) {
+                fosChartInstance = new Chart(ctxFos, {
+                    type: 'line',
+                    data: {
+                        labels: telemetryHistory['NODE_01'].timestamps,
+                        datasets: [
+                            {
+                                label: 'NODE 01 FoS',
+                                data: telemetryHistory['NODE_01'].fos,
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                                fill: true,
+                                borderWidth: 2,
+                                tension: 0.25,
+                                pointRadius: 0
+                            },
+                            {
+                                label: 'NODE 02 FoS',
+                                data: telemetryHistory['NODE_02'].fos,
+                                borderColor: '#38bdf8',
+                                backgroundColor: 'transparent',
+                                borderWidth: 2,
+                                tension: 0.25,
+                                pointRadius: 0
+                            },
+                            {
+                                label: 'Limit State (1.0)',
+                                data: new Array(telemetryHistory['NODE_01'].timestamps.length).fill(1.0),
+                                borderColor: '#f43f5e',
+                                borderWidth: 1.5,
+                                borderDash: [6, 4],
+                                pointRadius: 0,
+                                fill: false
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { color: 'rgba(51, 65, 85, 0.25)' }, ticks: { color: '#64748b', font: { family: 'Inter', size: 10 }, maxTicksLimit: 8 } },
+                            y: { min: 0.0, suggestedMax: 3.0, grid: { color: 'rgba(51, 65, 85, 0.25)' }, ticks: { color: '#94a3b8', font: { family: 'Inter', size: 10 } } }
+                        }
+                    }
+                });
+            }
+
+            // 2. RF Link Quality Chart (Nodes Tab)
+            const ctxRf = document.getElementById('rfChart')?.getContext('2d');
+            if (ctxRf) {
+                rfChartInstance = new Chart(ctxRf, {
+                    type: 'line',
+                    data: {
+                        labels: telemetryHistory[activeNodeId].timestamps,
+                        datasets: [
+                            {
+                                label: 'RSSI (dBm)',
+                                data: telemetryHistory[activeNodeId].rssi,
+                                borderColor: '#38bdf8',
+                                backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                                fill: true,
+                                borderWidth: 2,
+                                tension: 0.2,
+                                pointRadius: 0,
+                                yAxisID: 'yLeft'
+                            },
+                            {
+                                label: 'SNR (dB)',
+                                data: telemetryHistory[activeNodeId].snr,
+                                borderColor: '#10b981',
+                                backgroundColor: 'transparent',
+                                borderWidth: 2,
+                                tension: 0.2,
+                                pointRadius: 0,
+                                yAxisID: 'yRight'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { color: 'rgba(51, 65, 85, 0.25)' }, ticks: { color: '#64748b', font: { family: 'Inter', size: 10 }, maxTicksLimit: 8 } },
+                            yLeft: { position: 'left', min: -110, max: -40, grid: { color: 'rgba(51, 65, 85, 0.25)' }, ticks: { color: '#38bdf8', font: { family: 'Inter', size: 10 }, callback: v => `${v} dBm` } },
+                            yRight: { position: 'right', min: 0, max: 20, grid: { drawOnChartArea: false }, ticks: { color: '#10b981', font: { family: 'Inter', size: 10 }, callback: v => `${v} dB` } }
+                        }
+                    }
+                });
+            }
+
+            // 3. Displacement Chart (Displacement Tab)
+            const ctxDisp = document.getElementById('dispChart')?.getContext('2d');
+            if (ctxDisp) {
+                dispChartInstance = new Chart(ctxDisp, {
+                    type: 'line',
+                    data: {
+                        labels: telemetryHistory[activeNodeId].timestamps,
+                        datasets: [
+                            {
+                                label: 'Displacement (mm)',
+                                data: telemetryHistory[activeNodeId].disp,
+                                borderColor: '#38bdf8',
+                                backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                                fill: true,
+                                borderWidth: 2,
+                                tension: 0.2,
+                                pointRadius: 0,
+                                yAxisID: 'yLeft'
+                            },
+                            {
+                                label: 'Velocity (mm/h)',
+                                data: telemetryHistory[activeNodeId].vel,
+                                borderColor: '#f59e0b',
+                                backgroundColor: 'transparent',
+                                borderWidth: 2,
+                                tension: 0.2,
+                                pointRadius: 0,
+                                yAxisID: 'yRight'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { color: 'rgba(51, 65, 85, 0.25)' }, ticks: { color: '#64748b', font: { family: 'Inter', size: 10 }, maxTicksLimit: 8 } },
+                            yLeft: { position: 'left', min: 0, suggestedMax: 25, grid: { color: 'rgba(51, 65, 85, 0.25)' }, ticks: { color: '#38bdf8', font: { family: 'Inter', size: 10 }, callback: v => `${v} mm` } },
+                            yRight: { position: 'right', min: 0, suggestedMax: 15, grid: { drawOnChartArea: false }, ticks: { color: '#f59e0b', font: { family: 'Inter', size: 10 }, callback: v => `${v} mm/h` } }
+                        }
+                    }
+                });
+            }
+
+            // 4. Tilt Chart (Tilt & Vibration Tab)
+            const ctxTilt = document.getElementById('tiltChart')?.getContext('2d');
+            if (ctxTilt) {
+                tiltChartInstance = new Chart(ctxTilt, {
+                    type: 'line',
+                    data: {
+                        labels: telemetryHistory[activeNodeId].timestamps,
+                        datasets: [
+                            {
+                                label: 'Tilt from level',
+                                data: telemetryHistory[activeNodeId].tiltLevel,
+                                borderColor: '#38bdf8',
+                                backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                                fill: true,
+                                borderWidth: 2,
+                                tension: 0.25,
+                                pointRadius: 0,
+                                pointHoverRadius: 4,
+                                yAxisID: 'yLeft'
+                            },
+                            {
+                                label: 'Relative Deviation Δθ (°)',
+                                data: telemetryHistory[activeNodeId].changeRef,
+                                borderColor: '#10b981',
+                                backgroundColor: 'transparent',
+                                borderWidth: 2,
+                                tension: 0.25,
+                                pointRadius: 0,
+                                pointHoverRadius: 4,
+                                yAxisID: 'yRight'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { color: 'rgba(51, 65, 85, 0.25)' }, ticks: { color: '#64748b', font: { family: 'Inter', size: 10 }, maxTicksLimit: 8 } },
+                            yLeft: { position: 'left', min: 0.0, suggestedMax: 8.0, grid: { color: 'rgba(51, 65, 85, 0.25)' }, ticks: { color: '#94a3b8', font: { family: 'Inter', size: 10 }, callback: val => `${val.toFixed(2)}°` } },
+                            yRight: { position: 'right', min: 0.0, suggestedMax: 8.0, grid: { drawOnChartArea: false }, ticks: { color: '#10b981', font: { family: 'Inter', size: 10 }, callback: val => `${val.toFixed(2)}°` } }
+                        }
+                    }
+                });
+            }
+
+            // 5. Vibration Chart (Tilt & Vibration Tab)
+            const ctxVib = document.getElementById('vibChart')?.getContext('2d');
+            if (ctxVib) {
+                vibChartInstance = new Chart(ctxVib, {
+                    type: 'line',
+                    data: {
+                        labels: telemetryHistory[activeNodeId].timestamps,
+                        datasets: [
+                            {
+                                label: 'Vibration RMS',
+                                data: telemetryHistory[activeNodeId].vibRms,
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16, 185, 129, 0.06)',
+                                fill: true,
+                                borderWidth: 2,
+                                tension: 0.25,
+                                pointRadius: 0,
+                                pointHoverRadius: 4
+                            },
+                            {
+                                label: 'Peak Dynamic',
+                                data: telemetryHistory[activeNodeId].vibPeak,
+                                borderColor: '#f59e0b',
+                                backgroundColor: 'transparent',
+                                borderWidth: 1.5,
+                                tension: 0.2,
+                                pointRadius: 0,
+                                pointHoverRadius: 4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        animation: false,
+                        plugins: { legend: { display: false } },
+                        scales: {
+                            x: { grid: { color: 'rgba(51, 65, 85, 0.25)' }, ticks: { color: '#64748b', font: { family: 'Inter', size: 10 }, maxTicksLimit: 8 } },
+                            y: { min: 0.0, suggestedMax: 0.25, grid: { color: 'rgba(51, 65, 85, 0.25)' }, ticks: { color: '#94a3b8', font: { family: 'Inter', size: 10 }, callback: val => val.toFixed(3) } }
+                        }
+                    }
+                });
+            }
+        }
+
+        // ==========================================
+        // ACTIVE NODE & TIME WINDOW CONTROLS
+        // ==========================================
+        function setActiveNode(nodeId) {
+            activeNodeId = nodeId;
+
+            // Sync Tab 2 (Nodes)
+            const b1Nodes = document.getElementById('btn-node-tab-1');
+            const b2Nodes = document.getElementById('btn-node-tab-2');
+            if (b1Nodes && b2Nodes) {
+                b1Nodes.className = (nodeId === 'NODE_01') ? "px-3 py-1 font-bold rounded-lg bg-slate-800 text-white border border-slate-600 transition" : "px-3 py-1 font-medium rounded-lg text-slate-400 hover:text-slate-200 transition";
+                b2Nodes.className = (nodeId === 'NODE_02') ? "px-3 py-1 font-bold rounded-lg bg-slate-800 text-white border border-slate-600 transition" : "px-3 py-1 font-medium rounded-lg text-slate-400 hover:text-slate-200 transition";
+            }
+
+            // Sync Tab 3 (Displacement)
+            const b1Disp = document.getElementById('btn-disp-tab-1');
+            const b2Disp = document.getElementById('btn-disp-tab-2');
+            if (b1Disp && b2Disp) {
+                b1Disp.className = (nodeId === 'NODE_01') ? "px-3 py-1 font-bold rounded-lg bg-slate-800 text-white border border-slate-600 transition" : "px-3 py-1 font-medium rounded-lg text-slate-400 hover:text-slate-200 transition";
+                b2Disp.className = (nodeId === 'NODE_02') ? "px-3 py-1 font-bold rounded-lg bg-slate-800 text-white border border-slate-600 transition" : "px-3 py-1 font-medium rounded-lg text-slate-400 hover:text-slate-200 transition";
+            }
+
+            // Sync Tab 4 (Tilt & Vibration)
+            const btn1 = document.getElementById('btn-node-1');
+            const btn2 = document.getElementById('btn-node-2');
+            if (btn1 && btn2) {
+                btn1.className = (nodeId === 'NODE_01') ? "px-3 py-1 font-bold rounded-lg bg-slate-800 text-white border border-slate-600 transition flex items-center space-x-1.5 cursor-pointer" : "px-3 py-1 font-medium rounded-lg text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5 cursor-pointer";
+                btn2.className = (nodeId === 'NODE_02') ? "px-3 py-1 font-bold rounded-lg bg-slate-800 text-white border border-slate-600 transition flex items-center space-x-1.5 cursor-pointer" : "px-3 py-1 font-medium rounded-lg text-slate-400 hover:text-slate-200 transition flex items-center space-x-1.5 cursor-pointer";
+            }
+
+            updateDiagnosticCards();
+            updateAllCharts();
+        }
+
+        function setTimeWindow(mins) {
+            timeWindowMinutes = mins;
+            const btns = document.querySelectorAll('button[data-window]');
+            btns.forEach(b => {
+                const w = Number(b.getAttribute('data-window'));
+                if (w === mins) {
+                    b.className = "px-2.5 py-0.5 rounded-lg bg-slate-800 text-white font-bold border border-slate-700 transition";
+                } else {
+                    b.className = "px-2.5 py-0.5 rounded-lg hover:text-white transition";
+                }
+            });
+        }
+
+        function updateAllCharts() {
+            const h = telemetryHistory[activeNodeId];
+            if (!h) return;
+
+            // Tilt & Vib
+            if (tiltChartInstance) {
+                tiltChartInstance.data.labels = h.timestamps;
+                tiltChartInstance.data.datasets[0].data = h.tiltLevel;
+                tiltChartInstance.data.datasets[1].data = h.changeRef;
+                tiltChartInstance.update('none');
+            }
+            if (vibChartInstance) {
+                vibChartInstance.data.labels = h.timestamps;
+                vibChartInstance.data.datasets[0].data = h.vibRms;
+                vibChartInstance.data.datasets[1].data = h.vibPeak;
+
+                // Color vibration chart based on peak exceeding threshold
+                const latestPeak = h.vibPeak[h.vibPeak.length - 1] || 0;
+                if (latestPeak > 0.20) {
+                    vibChartInstance.data.datasets[1].borderColor = '#ef4444';
+                } else if (latestPeak > 0.10) {
+                    vibChartInstance.data.datasets[1].borderColor = '#f59e0b';
+                } else {
+                    vibChartInstance.data.datasets[1].borderColor = '#f59e0b';
+                }
+                vibChartInstance.update('none');
+            }
+
+            // RF
+            if (rfChartInstance) {
+                rfChartInstance.data.labels = h.timestamps;
+                rfChartInstance.data.datasets[0].data = h.rssi;
+                rfChartInstance.data.datasets[1].data = h.snr;
+                rfChartInstance.update('none');
+            }
+
+            // Disp — Color velocity line based on danger level
+            if (dispChartInstance) {
+                dispChartInstance.data.labels = h.timestamps;
+                dispChartInstance.data.datasets[0].data = h.disp;
+                dispChartInstance.data.datasets[1].data = h.vel;
+
+                const latestVel = h.vel[h.vel.length - 1] || 0;
+                if (latestVel > 15.0) {
+                    dispChartInstance.data.datasets[1].borderColor = '#ef4444'; // Critical red
+                } else if (latestVel > 5.0) {
+                    dispChartInstance.data.datasets[1].borderColor = '#f59e0b'; // Warning amber
+                } else {
+                    dispChartInstance.data.datasets[1].borderColor = '#f59e0b'; // Normal amber
+                }
+                dispChartInstance.update('none');
+            }
+
+            // FoS Overview — Dynamic color based on latest FoS values
+            if (fosChartInstance) {
+                const n1FosData = telemetryHistory['NODE_01'].fos;
+                const n2FosData = telemetryHistory['NODE_02'].fos;
+                const n1Latest = n1FosData[n1FosData.length - 1] || 2.5;
+                const n2Latest = n2FosData[n2FosData.length - 1] || 2.12;
+
+                // Dynamically color NODE 01 line
+                if (n1Latest < 1.0) {
+                    fosChartInstance.data.datasets[0].borderColor = '#ef4444';
+                    fosChartInstance.data.datasets[0].backgroundColor = 'rgba(239, 68, 68, 0.12)';
+                } else if (n1Latest < 1.5) {
+                    fosChartInstance.data.datasets[0].borderColor = '#f59e0b';
+                    fosChartInstance.data.datasets[0].backgroundColor = 'rgba(245, 158, 11, 0.08)';
+                } else {
+                    fosChartInstance.data.datasets[0].borderColor = '#10b981';
+                    fosChartInstance.data.datasets[0].backgroundColor = 'rgba(16, 185, 129, 0.08)';
+                }
+
+                // Dynamically color NODE 02 line
+                if (n2Latest < 1.0) {
+                    fosChartInstance.data.datasets[1].borderColor = '#ef4444';
+                } else if (n2Latest < 1.5) {
+                    fosChartInstance.data.datasets[1].borderColor = '#f59e0b';
+                } else {
+                    fosChartInstance.data.datasets[1].borderColor = '#38bdf8';
+                }
+
+                fosChartInstance.data.labels = telemetryHistory['NODE_01'].timestamps;
+                fosChartInstance.data.datasets[0].data = n1FosData;
+                fosChartInstance.data.datasets[1].data = n2FosData;
+                fosChartInstance.data.datasets[2].data = new Array(telemetryHistory['NODE_01'].timestamps.length).fill(1.0);
+
+                // Add/update 1.50 warning threshold line (dataset index 3)
+                if (!fosChartInstance.data.datasets[3]) {
+                    fosChartInstance.data.datasets.push({
+                        label: 'Warning Threshold (1.50)',
+                        data: new Array(telemetryHistory['NODE_01'].timestamps.length).fill(1.5),
+                        borderColor: '#f59e0b',
+                        borderWidth: 1,
+                        borderDash: [4, 4],
+                        pointRadius: 0,
+                        fill: false
+                    });
+                } else {
+                    fosChartInstance.data.datasets[3].data = new Array(telemetryHistory['NODE_01'].timestamps.length).fill(1.5);
+                }
+
+                fosChartInstance.update('none');
+            }
+        }
+
+        // ==========================================
+        // METRIC CARDS UPDATER ACROSS ALL TABS
+        // ==========================================
+        function updateDiagnosticCards() {
+            const nodeData = globalNodesData[activeNodeId] || {};
+            const isOff = !nodeData.reading_count || nodeData.reading_count === 0 || nodeData.status === 'OFFLINE' || (nodeData.last_seen_sec !== undefined && nodeData.last_seen_sec > 8);
+
+            const tilt = (nodeData.metrics && nodeData.metrics.tilt_total_deg !== undefined) ? nodeData.metrics.tilt_total_deg : (activeNodeId === 'NODE_01' ? 1.04 : 2.12);
+            const changeRef = (nodeData.metrics && nodeData.metrics.tilt_change_deg !== undefined) ? nodeData.metrics.tilt_change_deg : 0.015;
+            const vibG = (nodeData.metrics && nodeData.metrics.vibration_rms_g !== undefined) ? nodeData.metrics.vibration_rms_g : 0.003;
+            const vibPeak = (nodeData.metrics && nodeData.metrics.vibration_peak_g !== undefined) ? nodeData.metrics.vibration_peak_g : 0.045;
+            const vibMs2 = (vibG * 9.80665);
+            const fosVal = nodeData.fos !== undefined ? nodeData.fos : (activeNodeId === 'NODE_01' ? 2.50 : 2.12);
+            const battery = (nodeData.power && nodeData.power.battery_v !== undefined) ? nodeData.power.battery_v : 4.12;
+            const rssi = (nodeData.rf && nodeData.rf.rssi_dbm !== undefined) ? nodeData.rf.rssi_dbm : -68.0;
+            const snr = (nodeData.rf && nodeData.rf.snr_db !== undefined) ? nodeData.rf.snr_db : 9.8;
+            const vel = (nodeData.metrics && nodeData.metrics.velocity_mm_hr !== undefined) ? nodeData.metrics.velocity_mm_hr : (activeNodeId === 'NODE_01' ? 0.42 : 0.84);
+            const dispRel = (nodeData.metrics && nodeData.metrics.displacement_rel_m !== undefined) ? nodeData.metrics.displacement_rel_m : 0.012;
+            const dispMds = (nodeData.metrics && nodeData.metrics.displacement_mds_m !== undefined) ? nodeData.metrics.displacement_mds_m : 0.008;
+            const acc = (nodeData.metrics && nodeData.metrics.acceleration_mm_s2 !== undefined) ? nodeData.metrics.acceleration_mm_s2 : 0.002;
+
+            // Tab 4 (Tilt & Vibration)
+            const kpiTilt = document.getElementById('kpi-tilt');
+            const kpiChange = document.getElementById('kpi-change');
+            const kpiVibRms = document.getElementById('kpi-vib-rms');
+            const auxPitchRoll = document.getElementById('aux-pitch-roll');
+            const auxVibPeak = document.getElementById('aux-vib-peak');
+            const auxFos = document.getElementById('aux-fos');
+            const auxPowerRf = document.getElementById('aux-power-rf');
+
+            if (kpiTilt) kpiTilt.textContent = isOff ? "--" : `${tilt.toFixed(2)}°`;
+            if (kpiChange) kpiChange.textContent = isOff ? "--" : `${changeRef.toFixed(3)}°`;
+            if (kpiVibRms) kpiVibRms.textContent = isOff ? "--" : `${vibMs2.toFixed(3)} m/s²`;
+
+            const pitch = (nodeData.metrics && nodeData.metrics.tilt_pitch_deg !== undefined) ? nodeData.metrics.tilt_pitch_deg : 0.45;
+            const roll = (nodeData.metrics && nodeData.metrics.tilt_roll_deg !== undefined) ? nodeData.metrics.tilt_roll_deg : -0.82;
+            if (auxPitchRoll) auxPitchRoll.textContent = isOff ? "--" : `${pitch.toFixed(2)}° / ${roll.toFixed(2)}°`;
+            if (auxVibPeak) auxVibPeak.textContent = isOff ? "--" : `${vibPeak.toFixed(3)} g`;
+
+            if (auxFos) {
+                const fosLabel = fosVal < 1.0 ? '(CRITICAL)' : (fosVal < 1.5 ? '(WARNING)' : '(SAFE)');
+                auxFos.textContent = isOff ? "--" : `${fosVal.toFixed(2)} ${fosLabel}`;
+                auxFos.className = isOff ? "text-slate-400 font-bold tabular-nums" : `${getFosColorClass(fosVal)} font-bold tabular-nums`;
+            }
+            if (auxPowerRf) auxPowerRf.textContent = isOff ? "--" : `${battery.toFixed(2)}V • ${rssi.toFixed(0)} dBm`;
+
+            // Tab 2 (Nodes Hardware)
+            const hwBat = document.getElementById('node-hw-battery');
+            const hwRssi = document.getElementById('node-hw-rssi');
+            const hwSnr = document.getElementById('node-hw-snr');
+            if (hwBat) hwBat.textContent = isOff ? "--" : `${battery.toFixed(2)} V`;
+            if (hwRssi) hwRssi.textContent = isOff ? "--" : `${rssi.toFixed(0)}`;
+            if (hwSnr) hwSnr.textContent = isOff ? "--" : (snr >= 0 ? `+${snr.toFixed(1)}` : `${snr.toFixed(1)}`);
+
+            // Tab 3 (Displacement)
+            const dispRelEl = document.getElementById('disp-val-rel');
+            const dispMdsEl = document.getElementById('disp-val-mds');
+            const dispVelEl = document.getElementById('disp-val-vel');
+            const dispAccEl = document.getElementById('disp-val-acc');
+            if (dispRelEl) dispRelEl.textContent = isOff ? "--" : `${dispRel.toFixed(3)} m`;
+            if (dispMdsEl) dispMdsEl.textContent = isOff ? "--" : `${dispMds.toFixed(3)} m`;
+            if (dispVelEl) dispVelEl.textContent = isOff ? "--" : `${vel.toFixed(2)}`;
+            if (dispAccEl) dispAccEl.textContent = isOff ? "--" : `${acc.toFixed(3)}`;
+
+            // Tab 1 (Overview updates for both nodes)
+            const n1 = globalNodesData['NODE_01'] || {};
+            const n2 = globalNodesData['NODE_02'] || {};
+            const n1Off = !n1.reading_count || n1.reading_count === 0 || n1.status === 'OFFLINE' || (n1.last_seen_sec !== undefined && n1.last_seen_sec > 8);
+            const n2Off = !n2.reading_count || n2.reading_count === 0 || n2.status === 'OFFLINE' || (n2.last_seen_sec !== undefined && n2.last_seen_sec > 8);
+
+            const n1Fos = n1.fos !== undefined ? n1.fos : 2.50;
+            const n2Fos = n2.fos !== undefined ? n2.fos : 2.12;
+            const minFos = Math.min(n1Off ? 99 : n1Fos, n2Off ? 99 : n2Fos);
+            const ovMinFos = document.getElementById('overview-min-fos');
+            if (ovMinFos) {
+                ovMinFos.textContent = (n1Off && n2Off) ? "--" : minFos.toFixed(2);
+                ovMinFos.className = `text-2xl font-mono font-bold tabular-nums ${(n1Off && n2Off) ? 'text-slate-400' : getFosColorClass(minFos)}`;
+            }
+
+            // Failure Probability color coding
+            const ovFailProb = document.getElementById('overview-fail-prob');
+            const n1Risk = n1.risk_score !== undefined ? n1.risk_score : 0;
+            const n2Risk = n2.risk_score !== undefined ? n2.risk_score : 0;
+            const maxRisk = Math.max(n1Off ? 0 : n1Risk, n2Off ? 0 : n2Risk);
+            if (ovFailProb) {
+                const riskPct = (maxRisk * 100).toFixed(1);
+                ovFailProb.textContent = (n1Off && n2Off) ? "--" : `${riskPct}%`;
+                ovFailProb.className = `text-2xl font-mono font-bold tabular-nums ${maxRisk > 0.65 ? 'fos-critical' : (maxRisk > 0.35 ? 'fos-warning' : 'fos-safe')}`;
+            }
+
+            const n1Vel = (n1.metrics && n1.metrics.velocity_mm_hr !== undefined) ? n1.metrics.velocity_mm_hr : 0.42;
+            const n2Vel = (n2.metrics && n2.metrics.velocity_mm_hr !== undefined) ? n2.metrics.velocity_mm_hr : 0.84;
+            const maxVel = Math.max(n1Off ? 0 : n1Vel, n2Off ? 0 : n2Vel);
+            const ovMaxVel = document.getElementById('overview-max-vel');
+            if (ovMaxVel) ovMaxVel.textContent = (n1Off && n2Off) ? "--" : maxVel.toFixed(2);
+
+            // Node 1 overview card
+            const ovN1Fos = document.getElementById('overview-n1-fos');
+            const ovN1Tilt = document.getElementById('overview-n1-tilt');
+            const ovN1Vel = document.getElementById('overview-n1-vel');
+            const ovN1Bat = document.getElementById('overview-n1-bat');
+            const ovN1Rf = document.getElementById('overview-n1-rf');
+            const ovN1Badge = document.getElementById('badge-overview-node1');
+            const ovN1Dot = document.getElementById('dot-overview-node1');
+            if (ovN1Fos) {
+                ovN1Fos.textContent = n1Off ? "--" : n1Fos.toFixed(2);
+                ovN1Fos.className = n1Off ? 'text-sm font-bold tabular-nums text-slate-400' : `text-sm font-bold tabular-nums ${getFosColorClass(n1Fos)}`;
+            }
+            if (ovN1Tilt) ovN1Tilt.textContent = n1Off ? "--" : `${((n1.metrics && n1.metrics.tilt_total_deg !== undefined) ? n1.metrics.tilt_total_deg : 1.04).toFixed(2)}°`;
+            if (ovN1Vel) ovN1Vel.textContent = n1Off ? "--" : `${n1Vel.toFixed(2)} mm/h`;
+            if (ovN1Bat) ovN1Bat.textContent = n1Off ? "--" : `${((n1.power && n1.power.battery_v !== undefined) ? n1.power.battery_v : 4.12).toFixed(2)}V`;
+            if (ovN1Rf) ovN1Rf.textContent = n1Off ? "--" : `${((n1.rf && n1.rf.rssi_dbm !== undefined) ? n1.rf.rssi_dbm : -68).toFixed(0)} dBm`;
+            if (ovN1Badge) {
+                const n1Status = n1.status || 'STABLE';
+                const badgeText = n1Off ? 'OFFLINE' : (n1Status === 'CRITICAL' ? 'CRITICAL' : (n1Status === 'WARNING' ? 'WARNING' : 'ONLINE'));
+                ovN1Badge.textContent = badgeText;
+                if (n1Off) {
+                    ovN1Badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-900 text-slate-400 border border-slate-700';
+                } else if (n1Status === 'CRITICAL') {
+                    ovN1Badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-950 text-rose-400 border border-rose-800';
+                } else if (n1Status === 'WARNING') {
+                    ovN1Badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950 text-amber-400 border border-amber-800';
+                } else {
+                    ovN1Badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800';
+                }
+            }
+            if (ovN1Dot) ovN1Dot.className = n1Off ? "w-2.5 h-2.5 rounded-full bg-slate-500" : "w-2.5 h-2.5 rounded-full bg-emerald-400";
+
+            // Node 2 overview card
+            const ovN2Fos = document.getElementById('overview-n2-fos');
+            const ovN2Tilt = document.getElementById('overview-n2-tilt');
+            const ovN2Vel = document.getElementById('overview-n2-vel');
+            const ovN2Bat = document.getElementById('overview-n2-bat');
+            const ovN2Rf = document.getElementById('overview-n2-rf');
+            const ovN2Badge = document.getElementById('badge-overview-node2');
+            const ovN2Dot = document.getElementById('dot-overview-node2');
+            if (ovN2Fos) {
+                ovN2Fos.textContent = n2Off ? "--" : n2Fos.toFixed(2);
+                ovN2Fos.className = n2Off ? 'text-sm font-bold tabular-nums text-slate-400' : `text-sm font-bold tabular-nums ${getFosColorClass(n2Fos)}`;
+            }
+            if (ovN2Tilt) ovN2Tilt.textContent = n2Off ? "--" : `${((n2.metrics && n2.metrics.tilt_total_deg !== undefined) ? n2.metrics.tilt_total_deg : 2.12).toFixed(2)}°`;
+            if (ovN2Vel) ovN2Vel.textContent = n2Off ? "--" : `${n2Vel.toFixed(2)} mm/h`;
+            if (ovN2Bat) ovN2Bat.textContent = n2Off ? "--" : `${((n2.power && n2.power.battery_v !== undefined) ? n2.power.battery_v : 4.08).toFixed(2)}V`;
+            if (ovN2Rf) ovN2Rf.textContent = n2Off ? "--" : `${((n2.rf && n2.rf.rssi_dbm !== undefined) ? n2.rf.rssi_dbm : -72).toFixed(0)} dBm`;
+            if (ovN2Badge) {
+                const n2Status = n2.status || 'STABLE';
+                const badgeText2 = n2Off ? 'OFFLINE' : (n2Status === 'CRITICAL' ? 'CRITICAL' : (n2Status === 'WARNING' ? 'WARNING' : 'ONLINE'));
+                ovN2Badge.textContent = badgeText2;
+                if (n2Off) {
+                    ovN2Badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-900 text-slate-400 border border-slate-700';
+                } else if (n2Status === 'CRITICAL') {
+                    ovN2Badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-950 text-rose-400 border border-rose-800';
+                } else if (n2Status === 'WARNING') {
+                    ovN2Badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950 text-amber-400 border border-amber-800';
+                } else {
+                    ovN2Badge.className = 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800';
+                }
+            }
+            if (ovN2Dot) ovN2Dot.className = n2Off ? "w-2.5 h-2.5 rounded-full bg-slate-500" : "w-2.5 h-2.5 rounded-full bg-cyan-400";
+
+            // Tab 5 GIS FoS Sync
+            const gisB1 = document.getElementById('gis-b1-fos');
+            const gisB2 = document.getElementById('gis-b2-fos');
+            if (gisB1) {
+                gisB1.textContent = n1Off ? "--" : n1Fos.toFixed(2);
+                gisB1.className = n1Off ? 'p-2.5 text-slate-400 font-bold tabular-nums' : `p-2.5 ${getFosColorClass(n1Fos)} font-bold tabular-nums`;
+            }
+            if (gisB2) {
+                gisB2.textContent = n2Off ? "--" : n2Fos.toFixed(2);
+                gisB2.className = n2Off ? 'p-2.5 text-slate-400 font-bold tabular-nums' : `p-2.5 ${getFosColorClass(n2Fos)} font-bold tabular-nums`;
+            }
+
+            // Append live point to active node buffer
+            const t = new Date();
+            const timeStr = t.toTimeString().split(' ')[0];
+            const history = telemetryHistory[activeNodeId];
+
+            history.timestamps.push(timeStr);
+            history.tiltLevel.push(Number(tilt.toFixed(2)));
+            history.changeRef.push(Number(changeRef.toFixed(3)));
+            history.vibRms.push(Number(vibMs2.toFixed(3)));
+            history.vibPeak.push(Number(vibPeak.toFixed(3)));
+            history.fos.push(Number(fosVal.toFixed(2)));
+            history.rssi.push(Number(rssi.toFixed(0)));
+            history.snr.push(Number(snr.toFixed(1)));
+            history.disp.push(Number((dispRel * 1000).toFixed(1)));
+            history.vel.push(Number(vel.toFixed(2)));
+
+            if (history.timestamps.length > 35) {
+                history.timestamps.shift();
+                history.tiltLevel.shift();
+                history.changeRef.shift();
+                history.vibRms.shift();
+                history.vibPeak.shift();
+                history.fos.shift();
+                history.rssi.shift();
+                history.snr.shift();
+                history.disp.shift();
+                history.vel.shift();
+            }
+
+            // Push FoS + key metrics for ALL other nodes too (ensures Overview FoS chart stays in sync)
+            for (const [nid, nd] of Object.entries(globalNodesData)) {
+                if (nid === activeNodeId) continue;
+                const nh = telemetryHistory[nid];
+                if (!nh) continue;
+                const nOff = !nd.reading_count || nd.reading_count === 0 || nd.status === 'OFFLINE' || (nd.last_seen_sec !== undefined && nd.last_seen_sec > 8);
+                if (nOff) continue;
+
+                const nFos = nd.fos !== undefined ? nd.fos : 2.5;
+                const nTilt = (nd.metrics && nd.metrics.tilt_total_deg !== undefined) ? nd.metrics.tilt_total_deg : 1.0;
+                const nVibG = (nd.metrics && nd.metrics.vibration_rms_g !== undefined) ? nd.metrics.vibration_rms_g : 0.003;
+                const nVel = (nd.metrics && nd.metrics.velocity_mm_hr !== undefined) ? nd.metrics.velocity_mm_hr : 0.5;
+
+                nh.timestamps.push(timeStr);
+                nh.tiltLevel.push(Number(nTilt.toFixed(2)));
+                nh.changeRef.push(Number(((nd.metrics && nd.metrics.tilt_change_deg) || 0.015).toFixed(3)));
+                nh.vibRms.push(Number((nVibG * 9.80665).toFixed(3)));
+                nh.vibPeak.push(Number(((nd.metrics && nd.metrics.vibration_peak_g) || 0.04).toFixed(3)));
+                nh.fos.push(Number(nFos.toFixed(2)));
+                nh.rssi.push(Number(((nd.rf && nd.rf.rssi_dbm) || -70).toFixed(0)));
+                nh.snr.push(Number(((nd.rf && nd.rf.snr_db) || 9.0).toFixed(1)));
+                nh.disp.push(Number((((nd.metrics && nd.metrics.displacement_rel_m) || 0.01) * 1000).toFixed(1)));
+                nh.vel.push(Number(nVel.toFixed(2)));
+
+                if (nh.timestamps.length > 35) {
+                    nh.timestamps.shift(); nh.tiltLevel.shift(); nh.changeRef.shift();
+                    nh.vibRms.shift(); nh.vibPeak.shift(); nh.fos.shift();
+                    nh.rssi.shift(); nh.snr.shift(); nh.disp.shift(); nh.vel.shift();
+                }
+            }
+
+            updateAllCharts();
+        }
+
+        function handleIncomingState(data) {
+            if (!data.nodes) return;
+            globalNodesData = data.nodes;
+
+            let onlineCnt = 0;
+            for (const [nid, nd] of Object.entries(data.nodes)) {
+                const isOff = !nd.reading_count || nd.reading_count === 0 || nd.status === 'OFFLINE' || (nd.last_seen_sec !== undefined && nd.last_seen_sec > 8);
+                if (!isOff) onlineCnt++;
+                
+                // Update node dots on Tab 4
+                if (nid === 'NODE_01') {
+                    const dot1 = document.getElementById('dot-node-1');
+                    if (dot1) dot1.className = isOff ? "w-2 h-2 rounded-full bg-slate-500" : "w-2 h-2 rounded-full bg-emerald-400";
+                } else if (nid === 'NODE_02') {
+                    const dot2 = document.getElementById('dot-node-2');
+                    if (dot2) dot2.className = isOff ? "w-2 h-2 rounded-full bg-slate-500" : "w-2 h-2 rounded-full bg-cyan-400";
+                }
+            }
+
+            const hostNodes = document.getElementById('host-nodes-seen');
+            if (hostNodes) hostNodes.textContent = `${onlineCnt}/2`;
+
+            const ovOnline = document.getElementById('overview-nodes-online');
+            if (ovOnline) ovOnline.textContent = `${onlineCnt}/2`;
+
+            updateDiagnosticCards();
+            updateEngAlertBanner();
+        }
+
+        // ==========================================
+        // ENGINEERING ALERT BANNER & VISUAL SYSTEM
+        // ==========================================
+        let lastAlertLevel = 'NOMINAL';
+
+        function getFosColorClass(fosVal) {
+            if (fosVal < 1.0) return 'fos-critical';
+            if (fosVal < 1.5) return 'fos-warning';
+            return 'fos-safe';
+        }
+
+        function getFosBgClass(fosVal) {
+            if (fosVal < 1.0) return 'bg-rose-950 text-rose-400 border-rose-800';
+            if (fosVal < 1.5) return 'bg-amber-950 text-amber-400 border-amber-800';
+            return 'bg-emerald-950 text-emerald-400 border-emerald-800';
+        }
+
+        function updateEngAlertBanner() {
+            const banner = document.getElementById('eng-alert-banner');
+            const alertTitle = document.getElementById('eng-alert-title');
+            const alertDetail = document.getElementById('eng-alert-detail');
+            const alertFos = document.getElementById('eng-alert-fos');
+            const alertNode = document.getElementById('eng-alert-node');
+            const alertTime = document.getElementById('eng-alert-time');
+            const sectorBadge = document.querySelector('#view-overview .rounded-full');
+
+            if (!banner) return;
+
+            // Determine worst-case status across all nodes
+            let worstStatus = 'STABLE';
+            let worstNodeId = '';
+            let worstFos = 99;
+            let worstRisk = 0;
+
+            for (const [nid, nd] of Object.entries(globalNodesData)) {
+                const isOff = !nd.reading_count || nd.reading_count === 0 || nd.status === 'OFFLINE' || (nd.last_seen_sec !== undefined && nd.last_seen_sec > 8);
+                if (isOff) continue;
+
+                const nStatus = nd.status || 'STABLE';
+                const nFos = nd.fos !== undefined ? nd.fos : 2.5;
+                const nRisk = nd.risk_score !== undefined ? nd.risk_score : 0;
+
+                if (nStatus === 'CRITICAL' || nFos < 1.0) {
+                    worstStatus = 'CRITICAL';
+                    if (nFos < worstFos) { worstFos = nFos; worstNodeId = nid; }
+                } else if ((nStatus === 'WARNING' || nFos < 1.5) && worstStatus !== 'CRITICAL') {
+                    worstStatus = 'WARNING';
+                    if (nFos < worstFos) { worstFos = nFos; worstNodeId = nid; }
+                }
+                if (nFos < worstFos && worstStatus === 'STABLE') {
+                    worstFos = nFos;
+                    worstNodeId = nid;
+                }
+                if (nRisk > worstRisk) worstRisk = nRisk;
+            }
+
+            const timeStr = new Date().toTimeString().split(' ')[0];
+
+            if (worstStatus === 'CRITICAL') {
+                banner.className = 'items-center justify-between px-4 py-2 z-[60] text-xs font-mono font-bold alert-critical';
+                banner.style.display = 'flex';
+                if (alertTitle) alertTitle.textContent = '⚠ CRITICAL GEOTECHNICAL HAZARD';
+                if (alertDetail) alertDetail.textContent = `FoS breach below 1.00 — Immediate pit evacuation required`;
+                if (alertFos) alertFos.textContent = `FoS: ${worstFos.toFixed(2)}`;
+                if (alertNode) alertNode.textContent = worstNodeId.replace('_', ' ');
+                if (alertTime) alertTime.textContent = timeStr;
+
+                if (sectorBadge) {
+                    sectorBadge.textContent = 'SECTOR HEALTH: CRITICAL';
+                    sectorBadge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-950/80 text-rose-400 border border-rose-500/40';
+                }
+
+                // Fire siren
+                if (lastAlertLevel !== 'CRITICAL') {
+                    playAlarmSiren();
+                    appendAuditEntry('CRITICAL', worstNodeId, `FoS ${worstFos.toFixed(2)} — CRITICAL HAZARD DECLARED`, timeStr);
+                }
+                lastAlertLevel = 'CRITICAL';
+
+            } else if (worstStatus === 'WARNING') {
+                banner.className = 'items-center justify-between px-4 py-2 z-[60] text-xs font-mono font-bold alert-warning';
+                banner.style.display = 'flex';
+                if (alertTitle) alertTitle.textContent = '⚡ SLOPE STABILITY WARNING';
+                if (alertDetail) alertDetail.textContent = `FoS approaching critical threshold — Restrict pit floor operations`;
+                if (alertFos) alertFos.textContent = `FoS: ${worstFos.toFixed(2)}`;
+                if (alertNode) alertNode.textContent = worstNodeId.replace('_', ' ');
+                if (alertTime) alertTime.textContent = timeStr;
+
+                if (sectorBadge) {
+                    sectorBadge.textContent = 'SECTOR HEALTH: WARNING';
+                    sectorBadge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-950/80 text-amber-400 border border-amber-500/40';
+                }
+
+                if (lastAlertLevel !== 'WARNING' && lastAlertLevel !== 'CRITICAL') {
+                    appendAuditEntry('WARNING', worstNodeId, `FoS ${worstFos.toFixed(2)} — WARNING threshold breached`, timeStr);
+                }
+                lastAlertLevel = 'WARNING';
+
+            } else {
+                banner.className = 'items-center justify-between px-4 py-2 z-[60] text-xs font-mono font-bold';
+                banner.style.display = 'none';
+
+                if (sectorBadge) {
+                    sectorBadge.textContent = 'SECTOR HEALTH: NOMINAL';
+                    sectorBadge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-500/40';
+                }
+
+                if (lastAlertLevel !== 'NOMINAL') {
+                    appendAuditEntry('NOMINAL', '', 'All nodes returned to safe operating envelope', timeStr);
+                }
+                lastAlertLevel = 'NOMINAL';
+            }
+
+            // Update Alerts Tab tripwire status badge
+            const tripwireBadge = document.getElementById('tripwire-status-badge');
+            if (tripwireBadge) {
+                if (worstStatus === 'CRITICAL') {
+                    tripwireBadge.textContent = 'TRIPWIRE BREACH — CRITICAL';
+                    tripwireBadge.className = 'px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-950 text-rose-400 border border-rose-800';
+                } else if (worstStatus === 'WARNING') {
+                    tripwireBadge.textContent = 'TRIPWIRE WARNING';
+                    tripwireBadge.className = 'px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-950 text-amber-400 border border-amber-800';
+                } else {
+                    tripwireBadge.textContent = 'ALL TRIPWIRES NORMAL';
+                    tripwireBadge.className = 'px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-800';
+                }
+            }
+
+            // Update overview cards border highlighting based on node status
+            updateCardDangerBorders();
+        }
+
+        function updateCardDangerBorders() {
+            // Apply danger/warning borders to overview node cards
+            const nodeCards = document.querySelectorAll('#view-overview .glass-panel');
+            nodeCards.forEach(card => {
+                card.classList.remove('card-danger', 'card-warning');
+            });
+
+            for (const [nid, nd] of Object.entries(globalNodesData)) {
+                const isOff = !nd.reading_count || nd.reading_count === 0 || nd.status === 'OFFLINE';
+                if (isOff) continue;
+
+                const nFos = nd.fos !== undefined ? nd.fos : 2.5;
+                const nStatus = nd.status || 'STABLE';
+
+                // Find the corresponding overview card
+                const cardIdx = nid === 'NODE_01' ? 0 : (nid === 'NODE_02' ? 1 : -1);
+                const overviewCards = document.querySelectorAll('#view-overview .grid.grid-cols-1.md\\:grid-cols-2 > div');
+                if (cardIdx >= 0 && overviewCards[cardIdx]) {
+                    if (nStatus === 'CRITICAL' || nFos < 1.0) {
+                        overviewCards[cardIdx].classList.add('card-danger');
+                    } else if (nStatus === 'WARNING' || nFos < 1.5) {
+                        overviewCards[cardIdx].classList.add('card-warning');
+                    }
+                }
+            }
+        }
+
+        function appendAuditEntry(severity, nodeId, message, timeStr) {
+            const log = document.getElementById('alerts-audit-log');
+            if (!log) return;
+
+            const severityColors = {
+                'CRITICAL': 'bg-rose-950 text-rose-400',
+                'WARNING': 'bg-amber-950 text-amber-400',
+                'NOMINAL': 'bg-emerald-950 text-emerald-400'
+            };
+
+            const entry = document.createElement('div');
+            entry.className = 'p-2 rounded bg-slate-900/60 border border-slate-800 flex items-center justify-between';
+            entry.innerHTML = `
+                <span class="text-slate-400">[${timeStr}] ${nodeId ? nodeId : 'SYSTEM'}</span>
+                <span class="text-slate-300">${message}</span>
+                <span class="px-1.5 py-0.2 rounded ${severityColors[severity] || severityColors['NOMINAL']} text-[10px]">${severity}</span>
+            `;
+            log.insertBefore(entry, log.firstChild);
+
+            // Keep only last 20 entries
+            while (log.children.length > 20) {
+                log.removeChild(log.lastChild);
+            }
+        }
+
+        // ==========================================
+        // WEBSOCKET INTEGRATION
+        // ==========================================
+        function connectWebSocket() {
+            const host = window.location.hostname || "127.0.0.1";
+            const port = window.location.port || "8000";
+            const wsUrl = `ws://${host}:${port}/ws`;
+
+            try {
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    updateHeaderConnectionStatus(true, "LINK ACTIVE &#8226; USB GATEWAY");
+                    if (pingInterval) clearInterval(pingInterval);
+                    pingInterval = setInterval(() => {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            pingStartTime = performance.now();
+                            ws.send(JSON.stringify({ type: "PING", client_timestamp: pingStartTime }));
+                        }
+                    }, 3000);
+                };
+
+                ws.onclose = () => {
+                    if (pingInterval) clearInterval(pingInterval);
+                    updateHeaderConnectionStatus(false, "OFFLINE - RECONNECTING");
+                    setTimeout(connectWebSocket, 1500);
+                };
+
+                ws.onerror = () => {
+                    fetch('/api/state').then(r => r.json()).then(d => handleIncomingState(d)).catch(e => {});
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === "PONG") {
+                            const rtt = Math.round(performance.now() - pingStartTime);
+                            const pingEl = document.getElementById('nav-ping');
+                            if (pingEl) pingEl.textContent = `${rtt} ms`;
+                            return;
+                        }
+                        updateHeaderConnectionStatus(true, "LINK ACTIVE &#8226; USB GATEWAY");
+                        handleIncomingState(data);
+                    } catch (e) {
+                        console.error("[WS PARSE ERROR]", e);
+                    }
+                };
+            } catch (err) {
+                setTimeout(connectWebSocket, 2000);
+            }
+        }
+
+        function updateHeaderConnectionStatus(isOnline, text) {
+            const badge = document.getElementById('connection-status-badge');
+            const dot = document.getElementById('conn-indicator-dot');
+            const label = document.getElementById('connection-status-text');
+            if (!badge || !dot || !label) return;
+
+            if (isOnline) {
+                badge.className = "px-2.5 py-1 rounded-lg bg-emerald-950/80 border border-emerald-500/50 flex items-center space-x-1.5 text-emerald-300 font-mono text-[10px] font-bold";
+                dot.className = "w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping";
+                label.innerHTML = text || "LINK ACTIVE";
+            } else {
+                badge.className = "px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-700 flex items-center space-x-1.5 text-slate-400 font-mono text-[10px] font-bold";
+                dot.className = "w-1.5 h-1.5 rounded-full bg-slate-500";
+                label.innerHTML = text || "DISCONNECTED";
+            }
+        }
+
+        // Secondary polling failsafe
+        setInterval(() => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                fetch('/api/state')
+                    .then(r => r.json())
+                    .then(d => {
+                        updateHeaderConnectionStatus(true, "LINK ACTIVE (FALLBACK)");
+                        handleIncomingState(d);
+                    })
+                    .catch(() => {
+                        updateHeaderConnectionStatus(false, "DISCONNECTED");
+                    });
+            }
+        }, 2000);
+
+        // Bootstrap on DOM load
+        window.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+            connectWebSocket();
+            fetch('/api/state').then(r => r.json()).then(d => handleIncomingState(d)).catch(e => {});
+        });
+    </script>
+</body>
+</html>
