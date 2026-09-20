@@ -1,0 +1,3049 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GROSEN - Mine Subsidence & Landslide AI Command Center</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                        mono: ['Inter', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts: Inter (Clean, Neutral, Modern UI Typography) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Leaflet CSS & JS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+        :root {
+            --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #020617; /* deep charcoal bg-slate-950 */
+            font-family: var(--font-sans);
+            color: #f1f5f9;
+            transition: box-shadow 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        /* Clean Neutral Typography with Tabular Figures for Numbers */
+        .font-mono, .telemetry-val, .metric-num, [data-mono] {
+            font-family: var(--font-sans);
+            font-feature-settings: "tnum" 1, "cv02" 1, "cv03" 1, "cv04" 1;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -0.01em;
+        }
+
+        #map {
+            height: 100vh;
+            width: 100vw;
+            position: absolute;
+            z-index: 1;
+            background: #020617;
+        }
+
+        /* Map Satellite Tile Brightness - Vivid, Clear & High Visibility */
+        .leaflet-tile-pane {
+            filter: brightness(1.1) contrast(1.05);
+        }
+
+        /* Offline Node Marker Pin */
+        .node-marker-pin-offline {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            background: #1e293b;
+            border: 2px solid #64748b;
+            color: #94a3b8;
+            font-size: 10px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.7);
+        }
+
+        /* Dedicated Leaflet Panes Z-Index */
+        .leaflet-pane.leaflet-contourPane-pane { z-index: 350 !important; pointer-events: none; }
+        .leaflet-pane.leaflet-zonePane-pane { z-index: 375 !important; }
+        .leaflet-pane.leaflet-krigingPane-pane { z-index: 400 !important; pointer-events: none; }
+        .leaflet-marker-pane { z-index: 650 !important; }
+
+        /* Flat Crisp Industrial Panels */
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.90);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid #334155;
+            border-radius: 6px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+        }
+
+        .glass-panel-heavy {
+            background: rgba(2, 6, 23, 0.94);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid #334155;
+            border-radius: 6px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.7);
+        }
+
+        /* GIS Zone Pill Markers - Flat & Crisp */
+        .zone-pill-badge {
+            background: rgba(15, 23, 42, 0.92);
+            border: 1px solid;
+            border-radius: 6px;
+            padding: 3px 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.7);
+            white-space: nowrap;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            pointer-events: auto;
+        }
+        .zone-pill-badge:hover {
+            transform: scale(1.05);
+            background: rgba(30, 41, 59, 0.98);
+        }
+        .zone-pill-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            flex-shrink: 0;
+        }
+        .zone-marker-wrapper {
+            background: transparent !important;
+            border: none !important;
+        }
+
+        /* Sharp Industrial Node Markers */
+        .node-marker-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            cursor: pointer;
+        }
+        .node-marker-pin {
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            border: 1.5px solid #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 10px;
+            font-weight: 700;
+            font-family: var(--font-mono);
+            color: white;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.8);
+            transition: transform 0.2s ease;
+        }
+        .node-marker-pin:hover {
+            transform: scale(1.15);
+        }
+        .pulse-safe {
+            background: #059669;
+            border-color: #34d399;
+        }
+        .pulse-warning {
+            background: #d97706;
+            border-color: #fbbf24;
+        }
+        .pulse-danger {
+            background: #e11d48;
+            border-color: #f43f5e;
+        }
+        .pulse-blue {
+            background: #0284c7;
+            border-color: #38bdf8;
+        }
+
+        /* Gateway Base Station Marker */
+        .gateway-marker-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+        .gateway-marker-pin {
+            width: 28px;
+            height: 28px;
+            background: #0f172a;
+            border: 1.5px solid #38bdf8;
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.8);
+            color: #38bdf8;
+        }
+
+        /* Life-Safety Ambient Strobe for Peripheral Attention */
+        body.critical-strobe {
+            box-shadow: inset 0 0 100px 25px rgba(225, 29, 72, 0.75) !important;
+            animation: critical-pulse 1.4s ease-in-out infinite alternate;
+        }
+        @keyframes critical-pulse {
+            0% {
+                box-shadow: inset 0 0 70px 15px rgba(225, 29, 72, 0.55);
+            }
+            100% {
+                box-shadow: inset 0 0 120px 35px rgba(225, 29, 72, 0.85);
+            }
+        }
+
+        /* Multi-node full page red alarm */
+        .multi-node-blinking-red-alarm {
+            animation: full-page-emergency 1s infinite alternate;
+        }
+        @keyframes full-page-emergency {
+            0% { background-color: #020617; }
+            100% { background-color: #450a0a; }
+        }
+
+        /* Custom crisp scrollbar */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: #090d16; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        .hud-slider {
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 select-none">
+
+    <!-- Ambient Screen-Border Alarm Flash & Vignette (Preserved IDs) -->
+    <div id="alarm-strobe" class="pointer-events-none fixed inset-0 z-50 opacity-0 transition-opacity duration-300"></div>
+    <div id="subsidence-corner-vignette" class="pointer-events-none fixed inset-0 z-40 opacity-0 transition-opacity duration-300"></div>
+
+    <!-- Map Canvas (occupies 100% background) -->
+    <div id="map"></div>
+
+    <!-- GLOBAL NAVIGATION HEADER -->
+    <header class="fixed top-0 left-0 right-0 h-14 z-30 glass-panel border-b border-slate-700 flex items-center justify-between px-4 sm:px-6">
+        <!-- Left: Sector & Title -->
+        <div class="flex items-center space-x-3">
+            <button id="sidebar-toggle-btn" onclick="toggleSidebar()" title="Toggle Diagnostic Sidebar" class="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-300 hover:text-white transition">
+                <svg id="sidebar-icon" class="w-4 h-4 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 19l-7-7 7-7m8 14l-7-7 7-7" />
+                </svg>
+            </button>
+            <div class="flex items-center space-x-2.5">
+                <div class="h-5 w-1 bg-emerald-500 rounded-full"></div>
+                <div>
+                    <h1 class="text-xs sm:text-sm font-bold tracking-wider uppercase text-white font-mono flex items-center gap-2">
+                        <span>GROSEN &mdash; NLC SECTOR 4 PIT</span>
+                    </h1>
+                </div>
+            </div>
+        </div>
+
+        <!-- Dual-Mode Architecture Navigation -->
+        <div class="flex items-center bg-slate-900 border border-slate-700 rounded-xl p-0.5 shadow-sm select-none">
+            <button id="mode-btn-operator" onclick="setAppMode('operator')" 
+                    class="flex items-center space-x-1.5 px-3 py-1 text-xs font-mono font-bold rounded-lg transition bg-slate-800 text-white border border-slate-600 shadow-xs">
+                <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+                <span>Operator View</span>
+            </button>
+            <button id="mode-btn-engineering" onclick="navigateToEngineering()" 
+                    class="flex items-center space-x-1.5 px-3 py-1 text-xs font-mono font-medium text-slate-400 hover:text-slate-200 rounded-lg transition cursor-pointer">
+                <svg class="w-3.5 h-3.5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                </svg>
+                <span>Engineering Diagnostics</span>
+            </button>
+        </div>
+
+        <!-- Right: Telemetry Health, Quick Actions & Connection Status -->
+        <div class="flex items-center space-x-4">
+            <!-- Telemetry Uptime & Ping -->
+            <div class="hidden sm:flex items-center space-x-3 text-[11px] font-mono text-slate-300">
+                <div class="flex items-center space-x-1.5">
+                    <span class="text-slate-500 font-bold">UPTIME:</span>
+                    <span id="nav-uptime" class="text-emerald-400 font-bold tabular-nums">00:00:00</span>
+                </div>
+                <div class="flex items-center space-x-1.5">
+                    <span class="text-slate-500 font-bold">PING:</span>
+                    <span id="nav-ping" class="text-slate-200 font-bold tabular-nums">-- ms</span>
+                </div>
+            </div>
+
+            <!-- Weather Report Widget -->
+            <div id="weather-widget" class="hidden md:flex items-center space-x-2 px-2.5 py-1 rounded-lg bg-slate-900 border border-slate-800 text-[10px] font-mono">
+                <span id="weather-icon" class="text-sm">☀️</span>
+                <div class="flex flex-col leading-tight">
+                    <span id="weather-temp" class="text-white font-bold tabular-nums">32°C</span>
+                    <span id="weather-desc" class="text-slate-400 text-[8px]">Sunny</span>
+                </div>
+            </div>
+
+            <!-- Mandatory Acknowledge Alarm Button (hidden when calm) -->
+            <button id="ack-alarm-btn" onclick="acknowledgeAlarm()" class="hidden px-3 py-1 rounded-lg text-[11px] font-mono font-bold bg-rose-600 hover:bg-rose-500 text-white border border-rose-400 transition flex items-center space-x-1.5 cursor-pointer">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+                <span>ACK ALARM</span>
+            </button>
+
+            <!-- Interactive Movement Simulator Button -->
+            <button id="sim-motion-btn" onclick="triggerSimulatedMotion()" title="Trigger Geotechnical Slope Movement Surge" class="px-2.5 py-1 rounded-lg text-[10px] font-mono font-bold bg-slate-900 text-amber-300 border border-slate-700 hover:border-amber-500 transition flex items-center space-x-1 cursor-pointer">
+                <span>⚡ TEST SURGE</span>
+            </button>
+
+            <!-- Sound Mute Toggle -->
+            <button id="sound-btn" onclick="toggleAudio()" title="Toggle Alarm Audio Sirens" class="p-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700 transition cursor-pointer">
+                <svg id="sound-icon" class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                </svg>
+            </button>
+
+            <!-- Hardware WebSocket Status Badge -->
+            <div id="connection-status-badge" class="px-3 py-1 rounded-lg bg-slate-900 border border-slate-700 flex items-center space-x-1.5 text-slate-400 font-mono text-[10px] font-bold">
+                <span id="conn-indicator-dot" class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
+                <span id="connection-status-text">DISCONNECTED</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- LIGHT-THEMED OPERATOR LIFE-SAFETY HEADS-UP BANNER (Dismissible & State-Reactive) -->
+    <div id="operator-massive-panel" class="fixed top-16 left-1/2 -translate-x-1/2 w-[92vw] max-w-2xl z-30 pointer-events-auto transition-all duration-500 ease-out transform translate-y-0 opacity-100 scale-100">
+        <div id="operator-panel-surface" class="bg-white/95 backdrop-blur-xl border border-slate-200/90 rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3 shadow-[0_12px_35px_-5px_rgba(0,0,0,0.25),0_0_15px_rgba(255,255,255,0.15)] transition-all duration-300">
+            <!-- Top Compact Metadata Strip -->
+            <div id="operator-header-strip" class="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200 text-[10px] font-mono">
+                <div class="flex items-center space-x-2 text-slate-600">
+                    <span class="inline-block w-2 h-2 rounded-full bg-slate-400 transition-colors" id="operator-header-dot"></span>
+                    <span id="operator-header-title" class="font-bold tracking-wider text-slate-700">NEYVELI LIGNITE CORP &bull; SECTOR 4 PIT</span>
+                </div>
+                <div class="flex items-center space-x-3 text-slate-500">
+                    <span>MIN FoS: <b class="text-slate-800 font-bold tabular-nums" id="operator-fos-val">--</b></span>
+                    <span>SENSORS: <b class="text-slate-800 font-bold tabular-nums" id="operator-nodes-val">0/2 ONLINE</b></span>
+                    <!-- Cut / Dismiss Button -->
+                    <button id="dismiss-operator-banner" onclick="dismissOperatorBanner()" title="Dismiss until status changes" 
+                            class="ml-1 w-5 h-5 rounded-full bg-slate-200/80 hover:bg-slate-300 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-all cursor-pointer font-bold leading-none text-xs">
+                        &times;
+                    </button>
+                </div>
+            </div>
+
+            <!-- Main Life-Safety Status Row -->
+            <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center space-x-3 min-w-0">
+                    <!-- Status Icon Container -->
+                    <div id="operator-status-icon-wrapper" class="w-9 h-9 rounded-xl bg-slate-100 border border-slate-300 flex items-center justify-center flex-shrink-0 transition-colors shadow-xs">
+                        <svg id="operator-status-icon" class="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 4.243a9 9 0 01-2.828-6.364 9 9 0 012.828-6.364m2.829 2.829a5 5 0 00-1.415 3.535c0 1.38.56 2.63 1.415 3.535M12 12h.01"/>
+                        </svg>
+                    </div>
+
+                    <div class="min-w-0">
+                        <!-- Main Status Headline -->
+                        <div class="flex items-center space-x-2">
+                            <h2 id="operator-status-title" class="text-sm sm:text-base font-extrabold tracking-tight font-mono text-slate-800 truncate">
+                                SECTOR 4: OFFLINE
+                            </h2>
+                            <span id="operator-status-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-200 text-slate-700 border border-slate-300 flex-shrink-0">
+                                OFFLINE
+                            </span>
+                        </div>
+
+                        <!-- Action-Oriented Directives (English Only) -->
+                        <p id="operator-directive-en" class="text-[11px] sm:text-xs font-semibold text-slate-600 tracking-wide truncate">
+                            NO SENSOR TELEMETRY DETECTED. CONNECT NODES OR START GATEWAY.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Right Side Quick Directive Action / Evacuation Muster -->
+                <div id="operator-action-container" class="flex items-center space-x-2 flex-shrink-0">
+                    <div class="text-right hidden sm:block">
+                        <span class="text-[8px] font-mono uppercase tracking-widest text-slate-400 block font-bold">Protocol</span>
+                        <span id="operator-muster-text" class="text-[10px] font-mono font-bold text-slate-700">STANDBY FOR TELEMETRY</span>
+                    </div>
+                    <button id="operator-ack-alarm-btn" onclick="acknowledgeAlarm()" class="hidden px-3 py-1 rounded-lg text-[10px] font-mono font-bold bg-rose-600 hover:bg-rose-500 text-white border border-rose-400 transition flex items-center space-x-1 shadow-md cursor-pointer">
+                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                        </svg>
+                        <span>ACK</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- COLLAPSIBLE LEFT SIDEBAR (Engineering Diagnostics: Active Sensors & Incident Dispatch) -->
+    <aside id="sidebar" class="fixed top-16 left-4 bottom-12 w-80 max-w-[85vw] z-30 glass-panel rounded-2xl p-3.5 border border-slate-700 flex flex-col transition-transform duration-300 -translate-x-full overflow-hidden">
+        <!-- Pit Hazard Status Banner -->
+        <div id="system-alert-card" class="p-2.5 rounded-xl border bg-slate-900/80 border-slate-700/80 mb-3 transition-colors">
+            <div class="flex items-center justify-between">
+                <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">Pit Benchmark Status</span>
+                <span id="global-risk-badge" class="text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700 tabular-nums">NO TELEMETRY</span>
+            </div>
+            <div id="alert-text" class="text-lg font-bold font-mono tracking-wide text-slate-400 mt-1">OFFLINE</div>
+        </div>
+
+        <!-- Section 1: Active Sensors List -->
+        <div class="flex-1 flex flex-col min-h-0">
+            <div class="flex items-center justify-between pb-1.5 mb-2 border-b border-slate-800">
+                <span class="text-xs font-mono font-bold uppercase tracking-wider text-slate-300">Monitored Telemetry Nodes</span>
+                <span id="active-nodes-count" class="text-[10px] font-mono text-slate-500 font-bold tabular-nums">0/2 Nodes Online</span>
+            </div>
+            <div id="node-list" class="flex-1 overflow-y-auto space-y-2 pr-1">
+                <!-- Hydrated dynamically -->
+            </div>
+        </div>
+
+        <!-- Section 2: Live Incident Dispatch & Chat Box -->
+        <div class="pt-2 mt-2 border-t border-slate-800 flex flex-col h-44 flex-shrink-0">
+            <div class="flex items-center justify-between mb-1.5">
+                <div class="flex items-center space-x-1.5">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
+                    <span class="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-300">Incident Dispatch Register</span>
+                </div>
+                <button onclick="clearIncidentChat()" class="text-[9px] font-mono text-slate-400 hover:text-slate-200">CLEAR</button>
+            </div>
+            <div id="incident-chat-feed" class="flex-1 overflow-y-auto space-y-1.5 pr-1 font-mono text-[10px] bg-slate-950/60 rounded-xl p-2 border border-slate-800/80">
+                <div class="text-slate-400 italic">Command audit feed active. All movements recorded.</div>
+            </div>
+            <div class="flex items-center space-x-1.5 mt-1.5">
+                <input id="chat-input" type="text" placeholder="Broadcast directive..." class="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-[10px] font-mono text-white placeholder-slate-500 focus:outline-none focus:border-slate-500">
+                <button onclick="sendOperatorChat()" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-[10px] font-mono font-bold text-white">SEND</button>
+            </div>
+        </div>
+    </aside>
+
+    <!-- RIGHT-SIDE SLIDE-IN ANALYTICAL HUD (Engineering Diagnostics) -->
+    <div id="detail-hud" class="fixed top-16 right-4 bottom-12 w-96 max-w-[92vw] z-30 glass-panel rounded-2xl p-3.5 border border-slate-700 flex flex-col hud-slider translate-x-[110%] overflow-y-auto">
+        <!-- HUD Header with Fast Node Switcher Tabs -->
+        <div class="border-b border-slate-800 pb-2 mb-2.5">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <h2 id="hud-title" class="text-sm font-bold font-mono tracking-wider text-white">NODE DETAIL</h2>
+                    <span id="hud-zone-tag" class="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded-md bg-slate-900 text-slate-300 border border-slate-700">ZONE</span>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span id="hud-status-badge" class="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border border-slate-700">OFFLINE</span>
+                    <button onclick="closeHUD()" title="Close Subdashboard" class="px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-600 transition">
+                        CLOSE
+                    </button>
+                </div>
+            </div>
+
+            <!-- Quick Subdashboard Node Switcher Tabs -->
+            <div class="flex items-center justify-between mt-2 pt-1.5 border-t border-slate-800">
+                <div class="flex space-x-1.5">
+                    <button id="hud-tab-NODE_01" onclick="openHUD('NODE_01')" class="px-2.5 py-0.5 rounded-lg text-[10px] font-mono font-bold bg-slate-800 text-white border border-slate-600 transition">NODE_01</button>
+                    <button id="hud-tab-NODE_02" onclick="openHUD('NODE_02')" class="px-2.5 py-0.5 rounded-lg text-[10px] font-mono font-bold bg-slate-900 text-slate-400 border border-slate-800 hover:text-white transition">NODE_02</button>
+                </div>
+                <span id="hud-coords" class="text-[9px] font-mono text-slate-400 tabular-nums">LAT: -- | LON: --</span>
+            </div>
+        </div>
+
+        <!-- Factor of Safety (FoS) Progress Bar -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-3 mb-2.5">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center space-x-2">
+                    <span class="text-xs font-mono font-bold uppercase tracking-wider text-slate-300">Factor of Safety (FoS)</span>
+                    <span id="hud-fos-label" class="text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-md bg-slate-800 text-slate-400 border border-slate-700">OFFLINE</span>
+                </div>
+                <div class="flex items-baseline space-x-1">
+                    <span id="hud-fos-value" class="text-2xl font-bold font-mono text-slate-500 tabular-nums">--</span>
+                    <span class="text-[10px] font-mono text-slate-400">FoS</span>
+                </div>
+            </div>
+
+            <!-- Flat Horizontal Progress Track & Fill -->
+            <div class="relative w-full h-3 bg-slate-950 rounded-full border border-slate-800 overflow-hidden">
+                <div id="hud-fos-progress-fill" class="h-full bg-slate-700 transition-all duration-300 rounded-full" style="width: 0%;"></div>
+                <!-- Threshold Indicator Ticks at 1.0 (40%) and 1.5 (60%) -->
+                <div class="absolute top-0 bottom-0 left-[40%] w-[1px] bg-rose-500/70" title="Critical 1.0"></div>
+                <div class="absolute top-0 bottom-0 left-[60%] w-[1px] bg-amber-500/70" title="Warning 1.5"></div>
+            </div>
+
+            <!-- Threshold Scale Labels -->
+            <div class="flex justify-between items-center mt-1.5 text-[9px] font-mono text-slate-400">
+                <span class="text-rose-400 font-bold">0.0 (FAIL)</span>
+                <span class="text-rose-400 font-medium ml-4">1.0 CRIT</span>
+                <span class="text-amber-400 font-medium">1.5 WARN</span>
+                <span class="text-emerald-400 font-bold">2.5+ SAFE</span>
+            </div>
+
+            <!-- Hidden dummy elements to maintain 100% backward-compatibility with any legacy refs -->
+            <div id="fos-needle-group" style="display: none;"></div>
+            <div id="fos-needle-tip" style="display: none;"></div>
+            <div id="fos-hub-dot" style="display: none;"></div>
+        </div>
+
+        <!-- Key Telemetry Metrics Grid (Flat, Crisp Industrial Cards) -->
+        <div class="grid grid-cols-2 gap-2 mb-2.5 font-mono">
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-2 flex flex-col">
+                <span class="text-[9px] text-slate-400 uppercase font-bold">Tilt Total</span>
+                <span id="hud-tilt" class="text-base font-bold text-slate-400 tabular-nums">--</span>
+                <div class="flex justify-between text-[8px] text-slate-400 mt-0.5 pt-0.5 border-t border-slate-800/80">
+                    <span>PITCH: <b id="hud-pitch" class="text-slate-400 tabular-nums">--</b></span>
+                    <span>ROLL: <b id="hud-roll" class="text-slate-400 tabular-nums">--</b></span>
+                </div>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-2 flex flex-col">
+                <span class="text-[9px] text-slate-400 uppercase font-bold">Ground Velocity</span>
+                <span id="hud-vel" class="text-base font-bold text-slate-400 tabular-nums">--</span>
+                <span class="text-[8px] text-slate-400 mt-0.5 pt-0.5 border-t border-slate-800/80">CRIT THRESHOLD: 15.0 mm/h</span>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-2 flex flex-col">
+                <span class="text-[9px] text-slate-400 uppercase font-bold">Vibration Peak</span>
+                <span id="hud-vib" class="text-base font-bold text-slate-400 tabular-nums">--</span>
+                <span class="text-[8px] text-slate-400 mt-0.5 pt-0.5 border-t border-slate-800/80">DYNAMIC RMS SEISMIC</span>
+            </div>
+
+            <div class="bg-slate-900 border border-slate-800 rounded-xl p-2 flex flex-col">
+                <span class="text-[9px] text-slate-400 uppercase font-bold">Environment / Temp</span>
+                <span id="hud-temp" class="text-base font-bold text-slate-400 tabular-nums">--</span>
+                <span class="text-[8px] text-slate-400 mt-0.5 pt-0.5 border-t border-slate-800/80">MPU6050 THERMAL COMP</span>
+            </div>
+        </div>
+
+        <!-- Kinematics & LoRa RF Row -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-2 mb-2.5 font-mono text-[10px] space-y-1">
+            <div class="flex justify-between items-center">
+                <span class="text-slate-400">LoRa RF Link Quality:</span>
+                <span id="hud-rf" class="text-slate-400 font-bold tabular-nums">NO LINK</span>
+            </div>
+            <div class="flex justify-between items-center">
+                <span class="text-slate-400">MDS Relative Disp:</span>
+                <span id="hud-mds" class="text-slate-400 font-bold tabular-nums">--</span>
+            </div>
+        </div>
+
+        <!-- High-Visibility Compact Telemetry Graph -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-2.5 mb-2 flex-1 flex flex-col min-h-[160px]">
+            <div class="flex justify-between items-center mb-1.5">
+                <span class="text-[10px] font-mono font-bold text-slate-300 uppercase">Live Sensor History Stream</span>
+                <div class="flex space-x-1">
+                    <button id="btn-stream-tilt" onclick="switchChartStream('tilt')" class="px-2.5 py-0.5 rounded-md text-[9px] font-mono font-bold bg-slate-800 text-white border border-slate-600">TILT</button>
+                    <button id="btn-stream-vib" onclick="switchChartStream('vibration')" class="px-2.5 py-0.5 rounded-md text-[9px] font-mono font-bold bg-slate-900 text-slate-400 border border-slate-800">VIB</button>
+                </div>
+            </div>
+            <div class="relative flex-1 w-full min-h-[110px]">
+                <canvas id="nodeDetailChart"></canvas>
+            </div>
+            <div class="mt-1 flex justify-between items-center text-[9px] font-mono text-slate-400">
+                <span>BUFFER: 30 SAMPLES</span>
+                <span id="chart-live-stat" class="text-slate-500 tabular-nums">AWAITING SIGNAL</span>
+            </div>
+        </div>
+
+        <!-- Footer Power & Battery Status -->
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-2 flex justify-between items-center font-mono text-[10px]">
+            <span class="text-slate-400">BATTERY VOLTAGE:</span>
+            <div class="flex items-center space-x-2">
+                <span id="hud-battery" class="text-slate-400 font-bold tabular-nums">--</span>
+                <span class="text-[8px] px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700">STANDBY</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- TOAST NOTIFICATION CONTAINER (Top Right) -->
+    <div id="toast-container" class="fixed top-16 right-4 z-50 flex flex-col space-y-2 pointer-events-none max-w-sm"></div>
+
+    <!-- FLOATING ALARM ACKNOWLEDGEMENT BOX (Bottom Right) -->
+    <div id="ack-alarm-box" class="fixed bottom-14 right-4 z-50 glass-panel-heavy border border-slate-700 p-3.5 rounded-2xl shadow-2xl max-w-sm w-full translate-y-32 opacity-0 pointer-events-none transition-all duration-300">
+        <div class="flex items-start justify-between">
+            <div class="flex items-center space-x-2">
+                <span id="ack-box-badge" class="px-1.5 py-0.5 rounded-md text-[9px] font-mono font-bold bg-rose-900 text-rose-200 border border-rose-500">CRITICAL</span>
+                <span id="ack-box-node" class="text-xs font-mono font-bold text-white">NODE_01</span>
+            </div>
+            <button onclick="dismissAckBox()" class="text-slate-400 hover:text-white font-mono text-xs">✕</button>
+        </div>
+        <p id="ack-box-detail" class="mt-1.5 text-xs font-mono text-slate-200">Displacement acceleration threshold reached.</p>
+        <div class="mt-2.5 flex space-x-2">
+            <button id="btn-ack-alert" onclick="acknowledgeActiveAlarm()" class="flex-1 py-1 px-2 rounded-xl text-xs font-mono font-bold bg-rose-600 hover:bg-rose-500 text-white border border-rose-400 transition">
+                ACKNOWLEDGE
+            </button>
+            <button onclick="dismissAckBox()" class="py-1 px-2 rounded-xl text-xs font-mono text-slate-400 hover:text-white border border-slate-700">
+                DISMISS
+            </button>
+        </div>
+    </div>
+
+    <!-- BOTTOM LIVE INFO & AUDIT LOG DOCK (Visible in Engineering Mode) -->
+    <footer id="bottom-alarm-bar" class="fixed bottom-0 left-0 right-0 h-9 z-40 px-4 bg-slate-950/95 backdrop-blur-md border-t border-slate-800 flex items-center justify-between text-xs font-mono select-none hidden">
+        <div class="flex items-center space-x-3 overflow-hidden mr-4">
+            <div id="bottom-status-badge" class="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1.5 flex-shrink-0">
+                <span id="bottom-status-dot" class="h-1.5 w-1.5 rounded-full bg-slate-500"></span>
+                <span id="bottom-status-label">OFFLINE</span>
+            </div>
+            <div id="bottom-alarm-text" class="text-slate-400 text-[11px] truncate tracking-wide hidden lg:block">
+                Awaiting physical sensor telemetry packets &bull; No active LoRa nodes detected
+            </div>
+            <!-- Audit Log Ticker / Container -->
+            <div id="audit-log" class="overflow-y-auto max-h-7 flex-1 px-3 text-[10px] font-mono text-slate-400">
+                <div class="text-slate-500">[SYSTEM OFFLINE] Awaiting physical telemetry connection.</div>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-4 flex-shrink-0 text-[11px] text-slate-400">
+            <div class="hidden sm:flex items-center space-x-1.5">
+                <span>SECTOR 4 PEAK TILT:</span>
+                <span id="bottom-node1-tilt" class="text-slate-400 font-bold tabular-nums">--</span>
+            </div>
+            <div class="hidden sm:flex items-center space-x-1.5">
+                <span>CRITICAL FoS:</span>
+                <span id="bottom-fos-val" class="text-slate-400 font-bold tabular-nums">--</span>
+            </div>
+            <span id="bottom-clock" class="text-slate-500 tabular-nums">--:--:--</span>
+        </div>
+    </footer>
+
+    <!-- PAST ABNORMALITIES & INCIDENTS AUDIT MODAL -->
+    <div id="incidents-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm hidden">
+        <div class="glass-panel-heavy border border-slate-700 rounded-2xl max-w-2xl w-full mx-4 max-h-[85vh] flex flex-col p-4 shadow-2xl">
+            <div class="flex items-center justify-between pb-2 mb-3 border-b border-slate-800">
+                <div class="flex items-center space-x-2">
+                    <span class="text-sm font-mono font-bold text-white uppercase">Incidents Audit Register</span>
+                    <span id="modal-incident-count" class="text-[9px] font-mono px-1.5 py-0.2 rounded-md bg-slate-800 text-slate-300 border border-slate-700">0 RECORDED</span>
+                </div>
+                <button onclick="toggleIncidentsModal()" class="text-slate-400 hover:text-white font-mono text-sm">✕</button>
+            </div>
+            <div id="incidents-list" class="flex-1 overflow-y-auto space-y-2 pr-1 font-mono text-xs">
+                <p class="text-slate-500 italic p-4 text-center">No anomalies recorded in current operational shift.</p>
+            </div>
+            <div class="pt-3 mt-3 border-t border-slate-800 flex justify-end space-x-2">
+                <button onclick="exportCSV()" class="px-3 py-1 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-xs font-mono font-bold text-white">EXPORT AUDIT</button>
+                <button onclick="toggleIncidentsModal()" class="px-3 py-1 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs font-mono text-white">CLOSE</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SCRIPT ENGINE -->
+    <script>
+
+        // ==========================================
+        // DUAL-MODE ARCHITECTURE CONTROLLER
+        // ==========================================
+        let currentAppMode = 'operator';
+
+        function navigateToEngineering() {
+            if (window.location.protocol === 'file:') {
+                window.location.href = 'engineering.html';
+            } else if (window.location.pathname === '/' || window.location.pathname === '') {
+                window.location.href = '/frontend/engineering.html';
+            } else {
+                window.location.href = 'engineering.html';
+            }
+        }
+
+        function setAppMode(mode) {
+            if (mode === 'engineering') {
+                navigateToEngineering();
+                return;
+            }
+            currentAppMode = mode;
+            const opBtn = document.getElementById('mode-btn-operator');
+            const engBtn = document.getElementById('mode-btn-engineering');
+            const opPanel = document.getElementById('operator-massive-panel');
+            const hud = document.getElementById('detail-hud');
+            const sidebar = document.getElementById('sidebar');
+            const bottomDock = document.getElementById('bottom-alarm-bar');
+
+            if (mode === 'operator') {
+                if (opBtn) {
+                    opBtn.className = "flex items-center space-x-1.5 px-3 py-1 text-xs font-mono font-bold rounded-lg transition bg-slate-800 text-white border border-slate-600 shadow-xs";
+                }
+                if (engBtn) {
+                    engBtn.className = "flex items-center space-x-1.5 px-3 py-1 text-xs font-mono font-medium text-slate-400 hover:text-slate-200 rounded-lg transition";
+                }
+                if (opPanel) opPanel.classList.remove('hidden');
+                if (hud) hud.classList.add('translate-x-[110%]');
+                if (sidebar) sidebar.classList.add('-translate-x-full');
+                if (bottomDock) bottomDock.classList.add('hidden');
+            } else {
+                if (opBtn) {
+                    opBtn.className = "flex items-center space-x-1.5 px-3 py-1 text-xs font-mono font-medium text-slate-400 hover:text-slate-200 rounded-lg transition";
+                }
+                if (engBtn) {
+                    engBtn.className = "flex items-center space-x-1.5 px-3 py-1 text-xs font-mono font-bold rounded-lg transition bg-slate-800 text-white border border-slate-600 shadow-xs";
+                }
+                if (opPanel) opPanel.classList.add('hidden');
+                if (sidebar) sidebar.classList.remove('-translate-x-full');
+                if (hud) {
+                    hud.classList.remove('translate-x-[110%]');
+                    if (!activeChartNode) openHUD('NODE_01');
+                }
+                if (bottomDock) bottomDock.classList.remove('hidden');
+            }
+        }
+    
+
+
+        // ==========================================
+        
+    
+
+        // ==========================================
+                // ==========================================
+        // OPERATOR HEADS-UP BANNER DISMISSAL & REACTIVITY ENGINE
+        // ==========================================
+        let isOperatorBannerDismissed = false;
+        let previousOperatorStage = null;
+
+        function dismissOperatorBanner() {
+            isOperatorBannerDismissed = true;
+            const panel = document.getElementById('operator-massive-panel');
+            if (panel) {
+                panel.classList.add('-translate-y-12', 'opacity-0', 'scale-95', 'pointer-events-none');
+                panel.classList.remove('translate-y-0', 'opacity-100', 'scale-100', 'pointer-events-auto');
+            }
+        }
+
+        function showOperatorBanner() {
+            isOperatorBannerDismissed = false;
+            const panel = document.getElementById('operator-massive-panel');
+            if (panel) {
+                panel.classList.remove('-translate-y-12', 'opacity-0', 'scale-95', 'pointer-events-none');
+                panel.classList.add('translate-y-0', 'opacity-100', 'scale-100', 'pointer-events-auto');
+            }
+        }
+
+        // 1. GIS ENGINE & NEYVELI MAP CONFIGURATION
+        // ==========================================
+        const NEYVELI_CENTER = [11.5670, 79.4855];
+        
+        // Strict Neyveli Mine pit bounds - Prevents panning into the ocean
+        const NEYVELI_BOUNDS = L.latLngBounds(
+            [11.5520, 79.4720], // South-West
+            [11.5800, 79.4990]  // North-East
+        );
+
+        const map = L.map('map', {
+            zoomControl: false,
+            maxBounds: NEYVELI_BOUNDS,
+            maxBoundsViscosity: 1.0, // Strictly rubber-band back to mine pit
+            minZoom: 14,
+            maxZoom: 18 // Capped at 18 to ensure crisp satellite imagery and eliminate "Map data not available"
+        }).setView(NEYVELI_CENTER, 16);
+
+        // Position Zoom Control top-right beneath header
+        L.control.zoom({ position: 'topright' }).addTo(map);
+
+        // Custom Leaflet Panes for strict Z-Index control
+        map.createPane('contourPane');
+        map.getPane('contourPane').style.zIndex = 350;
+
+        map.createPane('zonePane');
+        map.getPane('zonePane').style.zIndex = 375;
+        
+        map.createPane('krigingPane');
+        map.getPane('krigingPane').style.zIndex = 400;
+
+        // Dedicated High-Resolution Satellite Tile Layer (Esri World Imagery)
+        const satelliteTileLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics',
+            minZoom: 14,
+            maxNativeZoom: 18,
+            maxZoom: 18
+        }).addTo(map);
+
+        // ==========================================
+        // 2. GIS PIT MONITORING ZONES & SECTOR OVERLAYS
+        // ==========================================
+        const PIT_ZONES = [
+            {
+                id: "ZONE_A",
+                code: "ZONE A",
+                name: "East Highwall Escarpment",
+                shortName: "East Highwall",
+                assignedNode: "NODE_02",
+                color: "#38bdf8",
+                markerPos: [11.5668, 79.4885],
+                polygon: [
+                    [11.5645, 79.4870],
+                    [11.5675, 79.4872],
+                    [11.5680, 79.4895],
+                    [11.5655, 79.4898],
+                    [11.5642, 79.4880]
+                ]
+            },
+            {
+                id: "ZONE_C",
+                code: "ZONE C",
+                name: "Pit Floor & Sump Basin",
+                shortName: "Pit Floor Sump",
+                assignedNode: "NODE_01",
+                color: "#10b981",
+                markerPos: [11.5635, 79.4832],
+                polygon: [
+                    [11.5620, 79.4820],
+                    [11.5645, 79.4822],
+                    [11.5648, 79.4848],
+                    [11.5625, 79.4850],
+                    [11.5618, 79.4835]
+                ]
+            },
+            {
+                id: "ZONE_B",
+                code: "ZONE B",
+                name: "West Incline Haul Road",
+                shortName: "West Incline",
+                assignedNode: "NODE_03",
+                color: "#a855f7",
+                markerPos: [11.5645, 79.4862],
+                polygon: [
+                    [11.5630, 79.4852],
+                    [11.5655, 79.4854],
+                    [11.5660, 79.4870],
+                    [11.5638, 79.4872],
+                    [11.5628, 79.4858]
+                ]
+            }
+        ];
+
+        const NODE_ZONE_LOOKUP = {
+            "NODE_01": { code: "ZONE C", name: "Pit Floor Sump", color: "#10b981", bg: "rgba(16, 185, 129, 0.15)", border: "rgba(16, 185, 129, 0.4)" },
+            "NODE_02": { code: "ZONE A", name: "East Highwall", color: "#38bdf8", bg: "rgba(56, 189, 248, 0.15)", border: "rgba(56, 189, 248, 0.4)" },
+            "NODE_03": { code: "ZONE B", name: "West Incline", color: "#a855f7", bg: "rgba(168, 85, 247, 0.15)", border: "rgba(168, 85, 247, 0.4)" }
+        };
+
+        const zoneGroup = L.featureGroup();
+        
+        PIT_ZONES.forEach(zone => {
+            // 1. Zone Sector Polygon Boundary
+            const poly = L.polygon(zone.polygon, {
+                pane: 'zonePane',
+                color: zone.color,
+                weight: 1.6,
+                dashArray: '5, 5',
+                fillColor: zone.color,
+                fillOpacity: 0.12,
+                className: 'zone-boundary-polygon'
+            });
+
+            poly.bindTooltip(`
+                <div class="font-mono text-xs p-1">
+                    <p class="font-black text-white" style="color:${zone.color}">${zone.code}: ${zone.name}</p>
+                    <p class="text-[9px] text-slate-300 mt-0.5">High-Precision Geotechnical Bench Sector</p>
+                    <p class="text-[9px] text-cyan-300 mt-1">Assigned IoT Node: <b>${zone.assignedNode}</b></p>
+                </div>
+            `, { sticky: true, className: 'bg-slate-900/95 border border-slate-700 shadow-xl' });
+
+            poly.on('mouseover', function() {
+                this.setStyle({ weight: 2.5, fillOpacity: 0.25 });
+            });
+            poly.on('mouseout', function() {
+                this.setStyle({ weight: 1.6, fillOpacity: 0.12 });
+            });
+            poly.on('click', () => openHUD(zone.assignedNode));
+
+            zoneGroup.addLayer(poly);
+
+            // 2. Zone Marker Badge Pin directly on map
+            const markerHtml = `
+                <div class="zone-pill-badge" style="border-color: ${zone.color};" onclick="openHUD('${zone.assignedNode}')">
+                    <span class="zone-pill-dot" style="background-color: ${zone.color}; color: ${zone.color};"></span>
+                    <span class="font-mono font-extrabold text-[10px] text-white tracking-wider">${zone.code}</span>
+                    <span class="font-mono text-[9px] text-slate-300 hidden sm:inline">&bull; ${zone.shortName}</span>
+                </div>
+            `;
+
+            const zoneMarker = L.marker(zone.markerPos, {
+                pane: 'markerPane',
+                icon: L.divIcon({
+                    html: markerHtml,
+                    className: 'zone-marker-wrapper',
+                    iconSize: null,
+                    iconAnchor: [55, 12]
+                })
+            });
+            zoneGroup.addLayer(zoneMarker);
+        });
+
+        zoneGroup.addTo(map);
+
+        let zonesVisible = true;
+        function toggleZoneLayer() {
+            zonesVisible = !zonesVisible;
+            const btn = document.getElementById('zone-toggle-btn');
+            const label = document.getElementById('zone-toggle-label');
+            if (zonesVisible) {
+                map.addLayer(zoneGroup);
+                btn.className = "px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-cyan-950/80 text-cyan-300 border border-cyan-500/50 hover:bg-cyan-900/80 transition flex items-center space-x-1 shadow-sm";
+                label.textContent = "ZONES ON";
+            } else {
+                map.removeLayer(zoneGroup);
+                btn.className = "px-2.5 py-1 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border border-slate-700 hover:bg-slate-700 transition flex items-center space-x-1";
+                label.textContent = "ZONES OFF";
+            }
+        }
+
+        // ==========================================
+        // 2. STATIC TOPOGRAPHICAL ELEVATION CONTOURS & MINE BOUNDARY
+        // ==========================================
+        // Realistic open-cast bench contours centered on Neyveli Mine Sector 4 Pit
+        const MINE_BENCHES = [
+            { elev: "+50m", label: "Surface Rim",      depth: 0,   rx: 0.0078, ry: 0.0056, weight: 1.5, gradient: "Horizontal Rim", stability: "Class I (Bedrock)" },
+            { elev: "+40m", label: "Upper Bench I",     depth: 10,  rx: 0.0068, ry: 0.0049, weight: 1.0, gradient: "1:2.0 (26.5°)", stability: "Class I (Stable)" },
+            { elev: "+30m", label: "Upper Bench II",    depth: 20,  rx: 0.0058, ry: 0.0042, weight: 1.0, gradient: "1:1.8 (29.0°)", stability: "Class II (Normal)" },
+            { elev: "+20m", label: "Mid Bench",         depth: 30,  rx: 0.0048, ry: 0.0035, weight: 1.0, gradient: "1:1.6 (32.0°)", stability: "Class II (Normal)" },
+            { elev: "+10m", label: "Haul Road Level",   depth: 40,  rx: 0.0038, ry: 0.0028, weight: 1.0, gradient: "1:1.5 (33.7°)", stability: "Class II (Normal)" },
+            { elev: "0m",   label: "Seam Crest",        depth: 50,  rx: 0.0030, ry: 0.0022, weight: 1.4, gradient: "1:1.4 (35.5°)", stability: "Class II (Monitored)" },
+            { elev: "-10m", label: "Lignite Seam Top",   depth: 60,  rx: 0.0022, ry: 0.0016, weight: 0.8, gradient: "1:1.3 (37.5°)", stability: "Class III (Active Pit)" },
+            { elev: "-20m", label: "Lignite Seam Mid",   depth: 70,  rx: 0.0016, ry: 0.0012, weight: 0.8, gradient: "1:1.2 (39.8°)", stability: "Class III (Active Pit)" },
+            { elev: "-30m", label: "Pit Floor Sump",    depth: 80,  rx: 0.0010, ry: 0.0008, weight: 1.4, gradient: "Floor Invert",  stability: "Class II (Drainage Floor)" }
+        ];
+
+        // 1. Full Mine Concession Enclosure Perimeter Line (Wrapping north above Gateway Node)
+        const MINE_BOUNDARY_PERIMETER = [
+            [79.4820, 11.5738],
+            [79.4850, 11.5746], // North of Gateway Mast (11.5710, 79.4850)
+            [79.4890, 11.5735],
+            [79.4925, 11.5708],
+            [79.4945, 11.5668], // East perimeter beyond Zone A (NODE_02)
+            [79.4938, 11.5625],
+            [79.4905, 11.5585],
+            [79.4860, 11.5568], // South perimeter beyond Zone C (NODE_01)
+            [79.4810, 11.5572],
+            [79.4765, 11.5605], // South-West drainage cut
+            [79.4750, 11.5652], // West haulage rim
+            [79.4762, 11.5702],
+            [79.4790, 11.5730],
+            [79.4820, 11.5738]  // Seamless loop enclosing the entire mine concession
+        ];
+
+        // 2. Terraced Non-Circular Highwall & Access Elevation Contours extending up to Gateway Node
+        const MINE_TERRAIN_CONTOURS = [
+            {
+                elev: "+65m",
+                label: "Gateway Elevated Mast Ridge",
+                depth: 0,
+                weight: 1.6,
+                isMajor: true,
+                gradient: "Ridge Plateau",
+                stability: "Class I (Solid Rock Rim)",
+                coords: [
+                    [79.4800, 11.5718], [79.4828, 11.5724], [79.4850, 11.5726], [79.4882, 11.5721], [79.4912, 11.5706]
+                ]
+            },
+            {
+                elev: "+55m",
+                label: "North Escarpment Haul Ramp",
+                depth: 10,
+                weight: 1.2,
+                isMajor: false,
+                gradient: "1:2.0 (26.5°)",
+                stability: "Class I (Engineered Ramp)",
+                coords: [
+                    [79.4788, 11.5692], [79.4818, 11.5704], [79.4850, 11.5709], [79.4878, 11.5702], [79.4908, 11.5686]
+                ]
+            },
+            {
+                elev: "+45m",
+                label: "Upper Highwall Haulage Terrace",
+                depth: 20,
+                weight: 1.2,
+                isMajor: false,
+                gradient: "1:1.8 (29.0°)",
+                stability: "Class II (Bench Cut)",
+                coords: [
+                    [79.4782, 11.5672], [79.4815, 11.5684], [79.4852, 11.5689], [79.4886, 11.5681], [79.4918, 11.5662]
+                ]
+            },
+            {
+                elev: "+35m",
+                label: "East Highwall Upper Bench (Zone A)",
+                depth: 30,
+                weight: 1.4,
+                isMajor: true,
+                gradient: "1:1.6 (32.0°)",
+                stability: "Class II (Monitored Escarpment)",
+                coords: [
+                    [79.4795, 11.5650], [79.4832, 11.5664], [79.4872, 11.5668], [79.4905, 11.5654], [79.4925, 11.5635]
+                ]
+            },
+            {
+                elev: "+15m",
+                label: "Mid Pit Haulage Transition",
+                depth: 50,
+                weight: 1.0,
+                isMajor: false,
+                gradient: "1:1.4 (35.5°)",
+                stability: "Class II (Active Haulage)",
+                coords: [
+                    [79.4808, 11.5628], [79.4838, 11.5642], [79.4870, 11.5646], [79.4898, 11.5630]
+                ]
+            }
+        ];
+
+        function generateMineContours() {
+            const features = [];
+
+            // A. Full Enclosed Mine Lease Boundary Line
+            features.push({
+                type: "Feature",
+                properties: {
+                    elevation: "+65m MSL",
+                    label: "Mine Lease Perimeter Enclosure (Enclosing Gateway & Pit)",
+                    depth: 0,
+                    weight: 2.0,
+                    isBoundary: true,
+                    gradient: "0.0° Concession Boundary",
+                    stability: "Class I (Secured Perimeter Boundary)"
+                },
+                geometry: { type: "LineString", coordinates: MINE_BOUNDARY_PERIMETER }
+            });
+
+            // B. Terraced Elevation Bench Cuts extending to Gateway Ridge
+            MINE_TERRAIN_CONTOURS.forEach(tc => {
+                features.push({
+                    type: "Feature",
+                    properties: {
+                        elevation: tc.elev,
+                        label: tc.label,
+                        depth: tc.depth,
+                        weight: tc.weight,
+                        isMajor: tc.isMajor,
+                        gradient: tc.gradient,
+                        stability: tc.stability
+                    },
+                    geometry: { type: "LineString", coordinates: tc.coords }
+                });
+            });
+
+            // C. Pit Bench Contours (With Reduced Opacity)
+            MINE_BENCHES.forEach(b => {
+                const ring = [];
+                for (let i = 0; i <= 48; i++) {
+                    const angle = (i * 7.5 * Math.PI) / 180;
+                    const wobble = 1 + 0.035 * Math.sin(3 * angle) + 0.015 * Math.cos(5 * angle);
+                    const lon = NEYVELI_CENTER[1] + (b.rx * Math.cos(angle) * wobble) / Math.cos(NEYVELI_CENTER[0] * Math.PI / 180);
+                    const lat = NEYVELI_CENTER[0] + (b.ry * Math.sin(angle) * wobble);
+                    ring.push([lon, lat]);
+                }
+                features.push({
+                    type: "Feature",
+                    properties: {
+                        elevation: b.elev,
+                        label: b.label,
+                        depth: b.depth,
+                        weight: b.weight,
+                        isMajor: b.weight >= 1.3,
+                        gradient: b.gradient,
+                        stability: b.stability
+                    },
+                    geometry: { type: "LineString", coordinates: ring }
+                });
+            });
+            return { type: "FeatureCollection", features: features };
+        }
+
+        const contourLayer = L.geoJSON(generateMineContours(), {
+            pane: 'contourPane',
+            style: function(feat) {
+                const p = feat.properties;
+                if (p.isBoundary) {
+                    return {
+                        color: '#000000',
+                        weight: 2.0,
+                        opacity: 0.38, // Sleek, reduced black opacity enclosing boundary
+                        dashArray: '8, 5'
+                    };
+                }
+                const isMajor = Boolean(p.isMajor);
+                return {
+                    color: '#000000',
+                    weight: p.weight || (isMajor ? 1.4 : 0.8),
+                    opacity: isMajor ? 0.22 : 0.12, // Substantially reduced opacity of black concentric circles
+                    dashArray: isMajor ? null : '4, 4'
+                };
+            },
+            onEachFeature: function(feat, layer) {
+                // Tooltips removed for clean, uncluttered map
+                layer.on('mouseover', function() {
+                    const p = feat.properties;
+                    this.setStyle({ weight: (p.weight || 1.4) + 1.0, opacity: p.isBoundary ? 0.65 : 0.40 });
+                });
+                layer.on('mouseout', function() {
+                    const p = feat.properties;
+                    if (p.isBoundary) {
+                        this.setStyle({ weight: 2.0, opacity: 0.38 });
+                    } else {
+                        const isMajor = Boolean(p.isMajor);
+                        this.setStyle({ weight: p.weight || (isMajor ? 1.4 : 0.8), opacity: isMajor ? 0.22 : 0.12 });
+                    }
+                });
+            }
+        }).addTo(map);
+
+        // Elevation Legend Control (bottom-left corner of map)
+        const elevLegend = L.control({ position: 'bottomleft' });
+        elevLegend.onAdd = function() {
+            const div = L.DomUtil.create('div', 'glass-panel');
+            div.style.cssText = 'padding: 8px 10px; border-radius: 10px; min-width: 125px; font-family: var(--font-mono); font-size: 9px; color: #cbd5e1; pointer-events: auto;';
+            let html = '<div style="font-weight:800; font-size:9px; text-transform:uppercase; letter-spacing:0.08em; color:#94a3b8; margin-bottom:5px;">⛰ ELEVATION SCALE</div>';
+            
+            // Boundary entry
+            html += `<div style="display:flex; align-items:center; gap:5px; margin:2px 0;">`;
+            html += `<span style="display:inline-block; width:14px; height:2px; border-top:2px dashed rgba(0,0,0,0.5);"></span>`;
+            html += `<span style="font-weight:700; color:#38bdf8">+65m Mine Boundary</span>`;
+            html += `</div>`;
+
+            // Ridge & Benches
+            const legendItems = [
+                { elev: "+60m", label: "Gateway Mast Ridge", major: true },
+                { elev: "+50m", label: "Surface Rim", major: true },
+                { elev: "+35m", label: "Upper Bench II", major: false },
+                { elev: "+20m", label: "Mid Bench", major: false },
+                { elev: "0m",   label: "Seam Crest", major: true },
+                { elev: "-30m", label: "Pit Floor Sump", major: true }
+            ];
+
+            legendItems.forEach(b => {
+                html += `<div style="display:flex; align-items:center; gap:5px; margin:2px 0; opacity:${b.major ? 0.9 : 0.65}">`;
+                html += `<span style="display:inline-block; width:14px; height:${b.major ? 2 : 1}px; background:rgba(0,0,0,0.3); ${!b.major ? 'border-top:1px dashed rgba(0,0,0,0.25);background:none;' : ''}"></span>`;
+                html += `<span style="font-weight:${b.major ? 700 : 400}; color:${b.major ? '#f1f5f9' : '#94a3b8'}">${b.elev} ${b.label}</span>`;
+                html += '</div>';
+            });
+            div.innerHTML = html;
+            return div;
+        };
+        elevLegend.addTo(map);
+
+        // ==========================================
+        // 3. RADIAL GRADIENT KRIGING HEATMAP OVERLAY
+        // ==========================================
+        // Risk-to-HSL gradient ramp: maps lever zone colors onto the map heatmap
+        function riskToHsl(risk) {
+            // risk 0.0  -> hsl(120, 70%, 45%) green
+            // risk 0.15 -> hsl(65,  85%, 50%) yellow-green
+            // risk 0.30 -> hsl(50,  90%, 50%) warm yellow
+            // risk 0.45 -> hsl(38,  95%, 48%) amber
+            // risk 0.60 -> hsl(25, 100%, 45%) deep orange
+            // risk 0.75 -> hsl(10,  90%, 45%) red-orange
+            // risk 1.00 -> hsl(0,   85%, 38%) deep crimson
+            const r = Math.min(1.0, Math.max(0.0, risk));
+            const h = Math.round(120 - r * 120);           // 120° (green) → 0° (red)
+            const s = Math.round(70 + r * 20);              // 70% → 90%
+            const l = Math.round(50 - r * 14);              // 50% → 36%
+            return { h, s, l, css: `hsl(${h}, ${s}%, ${l}%)` };
+        }
+
+        let heatmapLayer = L.geoJSON(null, {
+            pane: 'krigingPane',
+            style: function (feature) {
+                const risk = Math.min(1.0, Math.max(0.0, feature.properties.risk));
+                const color = riskToHsl(risk);
+                const band = (feature.properties && feature.properties.band) ? feature.properties.band : '';
+
+                let fillOpacity = 0.08;
+                if (band === 'fade_halo') {
+                    fillOpacity = Math.min(0.16, 0.06 + risk * 0.10);
+                } else {
+                    if (risk > 0.7) {
+                        fillOpacity = Math.min(0.30, 0.18 + (risk - 0.7) * 0.28);
+                    } else if (risk > 0.4) {
+                        fillOpacity = 0.14 + (risk - 0.4) * 0.18;
+                    } else {
+                        fillOpacity = 0.06 + risk * 0.12;
+                    }
+                }
+
+                return {
+                    fillColor: color.css,
+                    fillOpacity: fillOpacity,
+                    color: color.css,
+                    weight: 0, // Heatmap smoothing: weight 0 eliminates blocky gridlines
+                    opacity: 0
+                };
+            }
+        }).addTo(map);
+
+        // ==========================================
+        // 4. GLOBAL STATE & SENSOR MARKER MANAGEMENT
+        // ==========================================
+        let globalState = {};
+        let nodeMarkers = {};
+        let gatewayMarker = null;
+        let gatewayWavesGroup = null;
+        const GATEWAY_PROPAGATION_RADII = [250, 550, 850, 1200, 1550]; // Radii in meters for propagating transparent dotted blue waves
+        let rfLinkPolylines = {};
+        let activeChartNode = null;
+        let activeStream = 'tilt'; // 'tilt' | 'velocity' | 'vibration'
+        let loggedEvents = new Set();
+        let unacknowledgedAlarms = new Set();
+        let isAlarmAcknowledged = false;
+        let audioMuted = false;
+        let uptimeSeconds = 0;
+        let audioCtx = null;
+
+        // Sound Synthesizer for Alarms
+        function playAlarmSiren() {
+            if (audioMuted) return;
+            try {
+                if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                const now = audioCtx.currentTime;
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(880, now);
+                osc.frequency.exponentialRampToValueAtTime(440, now + 0.35);
+
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+
+                osc.start(now);
+                osc.stop(now + 0.35);
+            } catch(e) {}
+        }
+
+        function toggleAudio() {
+            audioMuted = !audioMuted;
+            const icon = document.getElementById('sound-icon');
+            if (audioMuted) {
+                icon.className = "w-3.5 h-3.5 text-slate-500";
+            } else {
+                icon.className = "w-3.5 h-3.5 text-emerald-400";
+            }
+        }
+
+        // Clock & Uptime loop (12-Hour Elegant Local Time & Uptime)
+        setInterval(() => {
+            uptimeSeconds++;
+            const hrs = String(Math.floor(uptimeSeconds / 3600)).padStart(2, '0');
+            const mins = String(Math.floor((uptimeSeconds % 3600) / 60)).padStart(2, '0');
+            const secs = String(uptimeSeconds % 60).padStart(2, '0');
+            const navUptime = document.getElementById('nav-uptime');
+            if (navUptime) navUptime.textContent = `${hrs}:${mins}:${secs}`;
+
+            const now = new Date();
+            const time12h = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+            const navTime = document.getElementById('nav-time');
+            if (navTime) navTime.textContent = time12h;
+            
+            const bottomClock = document.getElementById('bottom-clock');
+            if (bottomClock) {
+                bottomClock.textContent = time12h;
+                bottomClock.className = "text-slate-300 font-semibold tabular-nums";
+            }
+        }, 1000);
+
+        // Sidebar Collapse Toggle
+        let sidebarOpen = true;
+        function toggleSidebar() {
+            sidebarOpen = !sidebarOpen;
+            const sidebar = document.getElementById('sidebar');
+            const icon = document.getElementById('sidebar-icon');
+            if (window.innerWidth <= 1024) {
+                // Tablet bottom drawer toggle
+                sidebar.classList.toggle('collapsed-drawer');
+            } else {
+                if (sidebarOpen) {
+                    sidebar.style.transform = "translateX(0)";
+                    icon.style.transform = "rotate(0deg)";
+                } else {
+                    sidebar.style.transform = "translateX(-100%)";
+                    icon.style.transform = "rotate(180deg)";
+                }
+            }
+        }
+
+        function clearAuditLog() {
+            document.getElementById('audit-log').innerHTML = '<div class="text-slate-500">[LOG CLEARED by Operator]</div>';
+        }
+
+        function logEvent(message, severity = 'info') {
+            const time = new Date().toLocaleTimeString();
+            const logBox = document.getElementById('audit-log');
+            let color = 'text-slate-300';
+            if (severity === 'danger') color = 'text-red-400 font-bold';
+            if (severity === 'warning') color = 'text-amber-400 font-semibold';
+            if (severity === 'success') color = 'text-emerald-400';
+
+            const line = document.createElement('div');
+            line.className = color;
+            line.innerHTML = `[${time}] ${message}`;
+            logBox.appendChild(line);
+            logBox.scrollTop = logBox.scrollHeight;
+        }
+
+        // ==========================================
+        // 5. LIVE DETAIL CHART INITIALIZATION
+        // ==========================================
+        // Node Independent Ring Buffers (Tilt, Vibration, and Timestamps)
+        const initialTimes = Array.from({length: 15}, (_, i) => {
+            const d = new Date(Date.now() - (14 - i) * 2000);
+            return d.toTimeString().split(' ')[0];
+        });
+
+        let nodeChartBuffers = {
+            'NODE_01': { tilt: Array(15).fill(148), vibration: Array(15).fill(0.01), timestamps: [...initialTimes] },
+            'NODE_02': { tilt: Array(15).fill(8.5), vibration: Array(15).fill(0.01), timestamps: [...initialTimes] }
+        };
+
+        // Detail Multi-Stream Chart (Zero-Lag, Dynamic Neon Scaling)
+        const chartCtx = document.getElementById('nodeDetailChart').getContext('2d');
+        const nodeChart = new Chart(chartCtx, {
+            type: 'line',
+            data: {
+                labels: [...initialTimes],
+                datasets: [{
+                    label: 'Tilt (°)',
+                    borderColor: '#38bdf8',
+                    backgroundColor: 'rgba(56, 189, 248, 0.18)',
+                    borderWidth: 2.5,
+                    pointRadius: 3.5,
+                    pointBackgroundColor: '#38bdf8',
+                    pointBorderColor: '#0f172a',
+                    pointBorderWidth: 1.5,
+                    tension: 0.2,
+                    fill: true,
+                    data: Array(15).fill(148)
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false, // ZERO RENDER QUEUEING LAG
+                scales: {
+                    y: {
+                        grid: { color: 'rgba(255, 255, 255, 0.08)' },
+                        ticks: { 
+                            color: '#cbd5e1', 
+                            font: { size: 9, family: 'JetBrains Mono', weight: 'bold' } 
+                        }
+                    },
+                    x: { 
+                        grid: { color: 'rgba(255, 255, 255, 0.04)' },
+                        ticks: { 
+                            color: '#94a3b8', 
+                            font: { size: 8, family: 'JetBrains Mono' },
+                            maxTicksLimit: 5
+                        } 
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        titleFont: { family: 'JetBrains Mono' },
+                        bodyFont: { family: 'JetBrains Mono' }
+                    }
+                }
+            }
+        });
+
+        function switchChartStream(stream) {
+            activeStream = (stream === 'vibration') ? 'vibration' : 'tilt';
+            const btnTilt = document.getElementById('btn-stream-tilt');
+            const btnVib = document.getElementById('btn-stream-vib');
+
+            if (btnTilt) btnTilt.className = "px-2 py-0.5 rounded text-[8px] font-mono font-bold bg-slate-800 text-slate-400 hover:text-slate-200 transition";
+            if (btnVib) btnVib.className = "px-2 py-0.5 rounded text-[8px] font-mono font-bold bg-slate-800 text-slate-400 hover:text-slate-200 transition";
+
+            const currentNode = activeChartNode || 'NODE_01';
+            if (!nodeChartBuffers[currentNode]) {
+                nodeChartBuffers[currentNode] = { tilt: Array(15).fill(0), vibration: Array(15).fill(0), timestamps: [...initialTimes] };
+            }
+
+            if (activeStream === 'tilt') {
+                if (btnTilt) btnTilt.className = "px-2 py-0.5 rounded text-[8px] font-mono font-bold bg-cyan-500/30 text-cyan-300 border border-cyan-400 transition";
+                nodeChart.data.datasets[0].label = "Tilt Angle (°)";
+                nodeChart.data.datasets[0].borderColor = "#38bdf8";
+                nodeChart.data.datasets[0].pointBackgroundColor = "#38bdf8";
+                nodeChart.data.datasets[0].backgroundColor = "rgba(56, 189, 248, 0.18)";
+                nodeChart.data.datasets[0].data = [...nodeChartBuffers[currentNode].tilt];
+            } else {
+                if (btnVib) btnVib.className = "px-2 py-0.5 rounded text-[8px] font-mono font-bold bg-purple-500/30 text-purple-300 border border-purple-400 transition";
+                nodeChart.data.datasets[0].label = "Vibration Peak (g)";
+                nodeChart.data.datasets[0].borderColor = "#c084fc";
+                nodeChart.data.datasets[0].pointBackgroundColor = "#c084fc";
+                nodeChart.data.datasets[0].backgroundColor = "rgba(192, 132, 252, 0.18)";
+                nodeChart.data.datasets[0].data = [...nodeChartBuffers[currentNode].vibration];
+            }
+            nodeChart.update('none');
+        }
+
+        // ==========================================
+        // 6. SVG MINI SPARKLINES GENERATOR
+        // ==========================================
+        function generateSparklineSvg(dataPoints, isCritical, isWarning) {
+            if (!dataPoints || dataPoints.length < 2) {
+                return `<svg class="w-16 h-6 sparkline-svg opacity-30"><line x1="0" y1="12" x2="64" y2="12" stroke="#64748b" stroke-width="1.5"/></svg>`;
+            }
+
+            const w = 64;
+            const h = 22;
+            const min = Math.min(...dataPoints);
+            const max = Math.max(...dataPoints);
+            const range = (max - min) === 0 ? 1 : (max - min);
+
+            const points = dataPoints.map((val, idx) => {
+                const x = (idx / (dataPoints.length - 1)) * w;
+                const y = h - 2 - ((val - min) / range) * (h - 4);
+                return `${x.toFixed(1)},${y.toFixed(1)}`;
+            }).join(' ');
+
+            let strokeColor = '#10b981'; // safe green
+            if (isCritical) strokeColor = '#ef4444';
+            else if (isWarning) strokeColor = '#f59e0b';
+
+            return `
+                <svg class="w-16 h-6 sparkline-svg" viewBox="0 0 ${w} ${h}">
+                    <polyline fill="none" stroke="${strokeColor}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" points="${points}" />
+                </svg>
+            `;
+        }
+
+        // ==========================================
+        // 7. TOAST & INCIDENT ALARM SYSTEM
+        // ==========================================
+        let activeToastNodes = new Set();
+
+        function triggerCriticalAlarm(nodeId, message, severity = 'CRITICAL') {
+            if (activeToastNodes.has(nodeId)) {
+                // Strict 1 notification per node at any time
+                return;
+            }
+            activeToastNodes.add(nodeId);
+            unacknowledgedAlarms.add(nodeId);
+
+            // Audio siren
+            playAlarmSiren();
+
+            const toastContainer = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.id = `toast-${nodeId}`;
+            toast.className = "toast-enter p-3 rounded-xl border bg-slate-950/90 backdrop-blur-xl border-red-500 shadow-[0_0_20px_rgba(239,68,68,0.4)] text-white flex items-start space-x-3 pointer-events-auto cursor-pointer";
+            toast.onclick = () => openHUD(nodeId);
+
+            toast.innerHTML = `
+                <div class="p-1 rounded bg-red-500/20 text-red-400 border border-red-500/50 mt-0.5 animate-pulse">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between">
+                        <span class="font-mono font-black text-xs text-red-400">${nodeId}</span>
+                        <span class="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-red-950 text-red-300 border border-red-800">${severity}</span>
+                    </div>
+                    <p class="text-[10px] font-mono text-slate-300 mt-0.5 truncate">${message}</p>
+                </div>
+            `;
+
+            toastContainer.appendChild(toast);
+            setTimeout(() => {
+                toast.classList.remove('toast-enter');
+                toast.classList.add('toast-exit');
+                setTimeout(() => {
+                    toast.remove();
+                    activeToastNodes.delete(nodeId);
+                }, 400);
+            }, 6000);
+
+            // Update top-right notification icon badge for operator review
+            updateNotifBadge();
+
+            logEvent(`🚨 ${severity} ALARM on ${nodeId}: ${message}`, 'danger');
+        }
+
+        function acknowledgeAlarm(nodeId = null) {
+            if (nodeId) unacknowledgedAlarms.delete(nodeId);
+            else unacknowledgedAlarms.clear();
+
+            if (unacknowledgedAlarms.size === 0) {
+                const strobe = document.getElementById('alarm-strobe');
+                if (strobe) strobe.className = "";
+                const navAckBtn = document.getElementById('ack-alarm-btn');
+                if (navAckBtn) navAckBtn.classList.add('hidden');
+                logEvent(`✅ Pit alarm acknowledged. Strobe cleared.`, 'success');
+            }
+        }
+
+        let ackCooldownTimestamp = 0;
+        let criticalSustainTicks = 0;
+        let continuousAbnormalSeconds = 0;
+
+        function acknowledgeActiveAlarm() {
+            isAlarmAcknowledged = true;
+            ackCooldownTimestamp = Date.now() + 60000; // 60s cooldown to reduce notification frequency
+            unacknowledgedAlarms.clear();
+
+            // Switch screen strobe to acknowledged amber border
+            const strobe = document.getElementById('alarm-strobe');
+            if (strobe) {
+                strobe.className = "strobe-acknowledged";
+            }
+
+            // Remove aggressive full-page strobe
+            document.body.classList.remove('pit-evacuate-active');
+
+            // Update Acknowledge Box UI
+            const ackBtn = document.getElementById('btn-ack-alert');
+            if (ackBtn) {
+                ackBtn.className = "flex-1 py-1.5 px-3 rounded-lg font-mono text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-600 transition flex items-center justify-center gap-1.5";
+                ackBtn.innerHTML = "<span>✅</span><span>ALARM ACKNOWLEDGED</span>";
+            }
+
+            const ackDetail = document.getElementById('ack-box-detail');
+            if (ackDetail) {
+                ackDetail.textContent = `Evacuate alarm acknowledged by on-duty operator at ${new Date().toLocaleTimeString()}. Response protocol engaged.`;
+                ackDetail.className = "text-[11px] font-mono text-emerald-200 mb-3 bg-emerald-950/60 p-2 rounded border border-emerald-700/50";
+            }
+
+            const ackBadge = document.getElementById('ack-box-badge');
+            if (ackBadge) {
+                ackBadge.className = "px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-900/80 text-emerald-200 border border-emerald-500/50";
+                ackBadge.textContent = "ACKNOWLEDGED";
+            }
+
+            // Hide nav ack button if visible
+            const navAckBtn = document.getElementById('ack-alarm-btn');
+            if (navAckBtn) navAckBtn.classList.add('hidden');
+
+            logEvent("🛡️ Critical EVACUATE PIT alarm formally acknowledged by operator on duty.", 'warning');
+        }
+
+        function dismissAckBox() {
+            ackCooldownTimestamp = Date.now() + 45000; // 45s cooldown on manual dismissal
+            const box = document.getElementById('ack-alarm-box');
+            if (box) {
+                box.classList.add('translate-y-32', 'opacity-0', 'pointer-events-none');
+                box.classList.remove('translate-y-0', 'opacity-100', 'pointer-events-auto');
+            }
+        }
+
+        // ==========================================
+        // 8. HUD CONTROLS
+        // ==========================================
+        function openHUD(nodeId, forceOpen = false) {
+            activeChartNode = nodeId;
+            const hud = document.getElementById('detail-hud');
+            if (forceOpen || currentAppMode === 'engineering') {
+                hud.classList.remove('translate-x-[110%]');
+            }
+            document.getElementById('hud-title').textContent = nodeId;
+
+            // Highlight active tab
+            const tab1 = document.getElementById('hud-tab-NODE_01');
+            const tab2 = document.getElementById('hud-tab-NODE_02');
+            if (tab1 && tab2) {
+                if (nodeId === 'NODE_01') {
+                    tab1.className = "px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-500/30 text-cyan-200 border border-cyan-400 transition";
+                    tab2.className = "px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border border-slate-700 hover:text-white transition";
+                } else {
+                    tab2.className = "px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-cyan-500/30 text-cyan-200 border border-cyan-400 transition";
+                    tab1.className = "px-2.5 py-0.5 rounded text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border border-slate-700 hover:text-white transition";
+                }
+            }
+            
+            const zoneInfo = NODE_ZONE_LOOKUP[nodeId];
+            const zoneTag = document.getElementById('hud-zone-tag');
+            if (zoneInfo && zoneTag) {
+                zoneTag.textContent = `${zoneInfo.code}: ${zoneInfo.name}`;
+                zoneTag.style.borderColor = zoneInfo.border;
+                zoneTag.style.backgroundColor = zoneInfo.bg;
+                zoneTag.style.color = zoneInfo.color;
+            }
+
+            if (globalState[nodeId]) {
+                const node = globalState[nodeId];
+                document.getElementById('hud-coords').textContent = `LAT: ${node.lat.toFixed(4)} | LON: ${node.lon.toFixed(4)}`;
+                updateHUDTelemetry(node);
+            }
+        }
+
+        function closeHUD() {
+            activeChartNode = null;
+            document.getElementById('detail-hud').classList.add('translate-x-[110%]');
+        }
+
+        function updateHUDTelemetry(nData) {
+            const isOffline = !nData.reading_count || nData.reading_count === 0 || nData.status === 'OFFLINE' || (nData.last_seen_sec !== undefined && nData.last_seen_sec > 8);
+            const fos = (nData.fos !== undefined) ? Number(nData.fos) : 2.50;
+            
+            const fosLabel = document.getElementById('hud-fos-label');
+            const fosValueEl = document.getElementById('hud-fos-value');
+            const needleEl = document.getElementById('fos-needle-group');
+            const needleTip = document.getElementById('fos-needle-tip');
+            const hubDot = document.getElementById('fos-hub-dot');
+            const fosBarFill = document.getElementById('hud-fos-progress-fill');
+            const statusBadge = document.getElementById('hud-status-badge');
+
+            if (isOffline) {
+                if (fosValueEl) {
+                    fosValueEl.textContent = "--";
+                    fosValueEl.className = "text-2xl font-bold font-mono text-slate-500 tabular-nums";
+                    fosValueEl.style.color = '';
+                }
+                if (fosLabel) {
+                    fosLabel.textContent = "OFFLINE";
+                    fosLabel.className = "text-[10px] font-mono font-bold px-1.5 py-0.2 rounded-md bg-slate-800 text-slate-400 border border-slate-700";
+                }
+                if (fosBarFill) {
+                    fosBarFill.style.width = "0%";
+                    fosBarFill.className = "h-full bg-slate-700 transition-all duration-300 rounded-full";
+                }
+                if (statusBadge) {
+                    statusBadge.textContent = "OFFLINE";
+                    statusBadge.className = "px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-slate-800 text-slate-400 border border-slate-700";
+                }
+                const pitchEl = document.getElementById('hud-pitch');
+                const rollEl = document.getElementById('hud-roll');
+                if (pitchEl) pitchEl.textContent = "--";
+                if (rollEl) rollEl.textContent = "--";
+                document.getElementById('hud-tilt').textContent = "--";
+                document.getElementById('hud-vel').textContent = "--";
+                document.getElementById('hud-vib').textContent = "--";
+                document.getElementById('hud-temp').textContent = "--";
+                document.getElementById('hud-battery').textContent = "--";
+                const hudRfEl = document.getElementById('hud-rf');
+                const hudMdsEl = document.getElementById('hud-mds');
+                if (hudRfEl) hudRfEl.textContent = "NO LINK";
+                if (hudMdsEl) hudMdsEl.textContent = "--";
+                const chartStat = document.getElementById('chart-live-stat');
+                if (chartStat) {
+                    chartStat.textContent = "AWAITING SIGNAL";
+                    chartStat.className = "text-slate-500 tabular-nums";
+                }
+                return;
+            }
+
+            document.getElementById('hud-fos-value').textContent = fos.toFixed(2);
+
+            // Map FoS (0.0 to 2.5+) to Speedometer Needle Angle (-90 deg to +90 deg)
+            const clampedFos = Math.min(2.5, Math.max(0.0, fos));
+            const needleDeg = -90 + (clampedFos / 2.5) * 180;
+            if (needleEl) {
+                needleEl.style.transform = `rotate(${needleDeg}deg)`;
+            }
+            // Ultra-minimal flat horizontal progress bar update
+            if (fosBarFill) {
+                const pct = Math.min(100, Math.max(4, (clampedFos / 2.50) * 100));
+                fosBarFill.style.width = `${pct}%`;
+                if (fos < 1.0) {
+                    fosBarFill.className = "h-full bg-rose-500 transition-all duration-300 rounded-full";
+                } else if (fos < 1.5) {
+                    fosBarFill.className = "h-full bg-amber-500 transition-all duration-300 rounded-full";
+                } else {
+                    fosBarFill.className = "h-full bg-emerald-500 transition-all duration-300 rounded-full";
+                }
+            }
+
+            // Continuous gradient color on needle/hub matching the map risk HSL ramp
+            const fosRisk = Math.min(1.0, Math.max(0.0, (2.50 - clampedFos) / 2.50));
+            const needleColor = riskToHsl(fosRisk);
+            if (needleTip) needleTip.setAttribute('fill', needleColor.css);
+            if (hubDot) hubDot.setAttribute('fill', needleColor.css);
+
+            if (fos < 1.0) {
+                fosLabel.textContent = "CRITICAL FAIL";
+                fosLabel.className = "text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-rose-950/90 text-rose-400 border border-rose-500 animate-pulse";
+                fosValueEl.className = "text-2xl font-black font-mono text-rose-500 animate-pulse drop-shadow-md";
+                fosValueEl.style.color = needleColor.css;
+            } else if (fos < 1.5) {
+                fosLabel.textContent = "WARNING";
+                fosLabel.className = "text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-950/90 text-amber-400 border border-amber-500";
+                fosValueEl.className = "text-2xl font-black font-mono drop-shadow-md";
+                fosValueEl.style.color = needleColor.css;
+            } else {
+                fosLabel.textContent = "SAFE > 1.5";
+                fosLabel.className = "text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-500/40";
+                fosValueEl.className = "text-2xl font-black font-mono text-emerald-400 drop-shadow-md";
+                fosValueEl.style.color = '';
+            }
+
+            const m = nData.metrics || {};
+            const pitch = (m.tilt_pitch_deg !== undefined) ? m.tilt_pitch_deg : 0;
+            const roll = (m.tilt_roll_deg !== undefined) ? m.tilt_roll_deg : 0;
+            const tilt = (m.tilt_total_deg !== undefined) ? m.tilt_total_deg : 0;
+            const vel = nData.velocity || 0;
+            const vibPeak = (m.vibration_peak_g !== undefined) ? m.vibration_peak_g : 0;
+            const temp = (m.temp_c !== undefined) ? m.temp_c : 30;
+            const bat = (nData.power && nData.power.battery_v !== undefined) ? nData.power.battery_v : 4.0;
+
+            const pitchEl = document.getElementById('hud-pitch');
+            const rollEl = document.getElementById('hud-roll');
+            if (pitchEl) pitchEl.textContent = `${pitch >= 0 ? '+' : ''}${pitch.toFixed(1)}°`;
+            if (rollEl) rollEl.textContent = `${roll >= 0 ? '+' : ''}${roll.toFixed(1)}°`;
+
+            document.getElementById('hud-tilt').textContent = tilt.toFixed(1) + '°';
+            document.getElementById('hud-vel').textContent = vel.toFixed(1) + ' mm/h';
+            document.getElementById('hud-vib').textContent = vibPeak.toFixed(3) + ' g';
+            document.getElementById('hud-temp').textContent = temp.toFixed(1) + '°C';
+            document.getElementById('hud-battery').textContent = bat.toFixed(2) + 'V';
+
+            if (statusBadge) {
+                statusBadge.textContent = (fos < 1.0 || nData.status === 'CRITICAL') ? 'CRITICAL' : 'STABLE';
+                if (fos < 1.0 || nData.status === 'CRITICAL') {
+                    statusBadge.className = "px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-950 text-rose-400 border border-rose-500 animate-pulse";
+                } else {
+                    statusBadge.className = "px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-950 text-emerald-400 border border-emerald-500/40";
+                }
+            }
+
+            // Update LoRa RF RSSI & MDS Relative Displacement
+            const rf = nData.rf || {};
+            const rssi = rf.filtered_rssi_dbm !== undefined ? rf.filtered_rssi_dbm : (rf.rssi_dbm || -65.0);
+            const dist = nData.distance_m || 115.0;
+            const mdsDisp = nData.mds_displacement_m !== undefined ? nData.mds_displacement_m : 0.0;
+            const hudRfEl = document.getElementById('hud-rf');
+            const hudMdsEl = document.getElementById('hud-mds');
+            if (hudRfEl) hudRfEl.textContent = `${rssi.toFixed(0)}dBm | ${dist.toFixed(0)}m`;
+            if (hudMdsEl) hudMdsEl.textContent = `${mdsDisp > 0 ? '+' : ''}${mdsDisp.toFixed(2)}m`;
+
+            // Update Chart.js stream using independent buffers
+            const cNode = activeChartNode || 'NODE_01';
+            const nowTimeStr = new Date().toTimeString().split(' ')[0];
+            if (!nodeChartBuffers[cNode]) {
+                const initT = Array.from({length: 15}, (_, i) => {
+                    const d = new Date(Date.now() - (14 - i) * 2000);
+                    return d.toTimeString().split(' ')[0];
+                });
+                nodeChartBuffers[cNode] = { 
+                    tilt: Array(15).fill(Number(tilt.toFixed(1))), 
+                    vibration: Array(15).fill(Number(vibPeak.toFixed(3))),
+                    timestamps: [...initT]
+                };
+            }
+            nodeChartBuffers[cNode].tilt.push(Number(tilt.toFixed(1)));
+            nodeChartBuffers[cNode].tilt.shift();
+            nodeChartBuffers[cNode].vibration.push(Number(vibPeak.toFixed(3)));
+            nodeChartBuffers[cNode].vibration.shift();
+            nodeChartBuffers[cNode].timestamps.push(nowTimeStr);
+            nodeChartBuffers[cNode].timestamps.shift();
+
+            const stKey = (activeStream === 'vibration') ? 'vibration' : 'tilt';
+            const streamData = nodeChartBuffers[cNode][stKey];
+            nodeChart.data.labels = [...nodeChartBuffers[cNode].timestamps];
+            nodeChart.data.datasets[0].data = [...streamData];
+
+            // Dynamic Auto-Scaling on Y-axis for Crystal Clear Visibility
+            const minV = Math.min(...streamData);
+            const maxV = Math.max(...streamData);
+            const spanV = (maxV - minV) || (stKey === 'vibration' ? 0.02 : 2.0);
+            const padV = spanV * 0.25;
+
+            nodeChart.options.scales.y.suggestedMin = Math.max(0, Number((minV - padV).toFixed(stKey === 'vibration' ? 3 : 1)));
+            nodeChart.options.scales.y.suggestedMax = Number((maxV + padV).toFixed(stKey === 'vibration' ? 3 : 1));
+
+            // Update live stat text pill
+            const statEl = document.getElementById('chart-live-stat');
+            if (statEl) {
+                const latestVal = streamData[streamData.length - 1];
+                const unit = (stKey === 'vibration') ? 'g' : '°';
+                statEl.textContent = `LIVE: ${latestVal.toFixed(stKey === 'vibration' ? 3 : 1)}${unit}`;
+            }
+
+            // ZERO DELAY INSTANT RE-RENDER
+            nodeChart.update('none');
+        }
+
+        // ==========================================
+        // 9. WEBSOCKET & INSTANT STATE HYDRATION
+        // ==========================================
+        let ws = null;
+        let pingStartTime = 0;
+        let pingInterval = null;
+
+        function updateHeaderConnectionStatus(isOnline, label = "LINK ACTIVE ● USB GATEWAY") {
+            const badge = document.getElementById('connection-status-badge');
+            const text = document.getElementById('connection-status-text');
+            const dot = document.getElementById('conn-indicator-dot');
+            if (!badge || !text || !dot) return;
+
+            if (isOnline) {
+                badge.className = "px-2.5 py-1 rounded-full text-[10px] font-mono font-bold flex items-center space-x-2 bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 glow-active";
+                dot.className = "h-2 w-2 rounded-full bg-emerald-400 animate-ping";
+                text.textContent = label;
+            } else {
+                badge.className = "px-2.5 py-1 rounded-full text-[10px] font-mono font-bold flex items-center space-x-2 bg-red-500/20 text-red-300 border border-red-500/50 glow-severed";
+                dot.className = "h-2 w-2 rounded-full bg-red-400";
+                text.textContent = label;
+            }
+        }
+
+        function connectWebSocket() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const host = window.location.host || '127.0.0.1:8000';
+            const wsUrl = window.location.protocol.startsWith('http') ? `${protocol}//${host}/ws` : 'ws://127.0.0.1:8000/ws';
+
+            if (ws) {
+                try { ws.close(); } catch(e) {}
+            }
+
+            // Immediate state hydration on connect
+            fetch('/api/state')
+                .then(r => r.json())
+                .then(d => {
+                    updateHeaderConnectionStatus(true);
+                    handleStateUpdate(d);
+                })
+                .catch(e => {
+                    console.warn("[HTTP Fallback Warning]", e);
+                });
+
+            try {
+                ws = new WebSocket(wsUrl);
+
+                ws.onopen = () => {
+                    updateHeaderConnectionStatus(true, "LINK ACTIVE ● USB GATEWAY");
+                    logEvent("Telemetry WebSocket linked. Zero-Latency LoRa Bridge active.", 'success');
+
+                    // Start Latency Ping Heartbeat
+                    if (pingInterval) clearInterval(pingInterval);
+                    pingInterval = setInterval(() => {
+                        if (ws && ws.readyState === WebSocket.OPEN) {
+                            pingStartTime = performance.now();
+                            ws.send(JSON.stringify({ type: "PING", client_timestamp: pingStartTime }));
+                        }
+                    }, 3000);
+                };
+
+                ws.onclose = () => {
+                    if (pingInterval) { clearInterval(pingInterval); pingInterval = null; }
+                    updateHeaderConnectionStatus(false, "OFFLINE - RECONNECTING");
+                    logEvent("Telemetry link reconnecting...", 'warning');
+                    setTimeout(connectWebSocket, 1500);
+                };
+
+                ws.onerror = (err) => {
+                    console.error("[WS ERROR]", err);
+                    // Trigger fast fallback HTTP pull
+                    fetch('/api/state').then(r => r.json()).then(d => handleStateUpdate(d)).catch(e => {});
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        if (data.type === "PONG") {
+                            const rtt = Math.round(performance.now() - pingStartTime);
+                            const pingEl = document.getElementById('nav-ping');
+                            if (pingEl) pingEl.textContent = `${rtt} ms`;
+                            return;
+                        }
+                        updateHeaderConnectionStatus(true, "LINK ACTIVE ● USB GATEWAY");
+                        handleStateUpdate(data);
+                    } catch (e) {
+                        console.error("[WS PARSE ERROR]", e);
+                    }
+                };
+            } catch (err) {
+                console.error("[WS CONSTRUCT ERROR]", err);
+                setTimeout(connectWebSocket, 2000);
+            }
+        }
+
+        // Secondary polling failsafe ensures dashboard never freezes even if WS drops
+        setInterval(() => {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                fetch('/api/state')
+                    .then(r => r.json())
+                    .then(d => {
+                        updateHeaderConnectionStatus(true, "LINK ACTIVE (FALLBACK)");
+                        handleStateUpdate(d);
+                    })
+                    .catch(() => {
+                        updateHeaderConnectionStatus(false, "DISCONNECTED");
+                    });
+            }
+        }, 2000);
+
+        function handleStateUpdate(data) {
+            if (!data.nodes) return;
+            globalState = data.nodes;
+            let globalMaxRisk = 0;
+
+            // 1. Update Kriging GeoJSON Heatmap Overlay
+            if (data.heatmap) {
+                heatmapLayer.clearLayers();
+                heatmapLayer.addData(data.heatmap);
+            }
+
+            // 2. Hydrate & Render Active Sensors & Gateway in Sidebar
+            const nodeList = document.getElementById('node-list');
+            nodeList.innerHTML = '';
+
+            // Render Gateway Base Station Header Card
+            if (data.gateway) {
+                const gw = data.gateway;
+                const gwCard = document.createElement('div');
+                gwCard.className = "p-2.5 mb-2 rounded-xl border bg-cyan-950/30 border-cyan-500/40 flex items-center justify-between";
+                gwCard.innerHTML = `
+                    <div class="flex items-center space-x-2.5">
+                        <div class="w-7 h-7 rounded-full bg-cyan-900/60 border border-cyan-400/60 flex items-center justify-center text-sm shadow-[0_0_10px_rgba(56,189,248,0.4)]">
+                            📡
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-1.5">
+                                <p class="font-mono font-black text-xs text-cyan-300">${gw.node_id}</p>
+                                <span class="text-[8px] font-mono font-bold px-1.5 py-0.2 rounded border bg-cyan-900/50 text-cyan-200 border-cyan-600/50">BASE STATION</span>
+                            </div>
+                            <p class="text-[9px] font-mono text-slate-300">${gw.name}</p>
+                        </div>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-[9px] font-mono font-extrabold text-emerald-400">● ${gw.status}</span>
+                        <p class="text-[8px] font-mono text-cyan-400/80">LoRa 433MHz</p>
+                    </div>
+                `;
+                nodeList.appendChild(gwCard);
+
+                // Render Gateway on Leaflet Map
+                const gwMarkerHtml = `
+                    <div class="gateway-marker-container" title="${gw.name}">
+                        <div class="gateway-marker-pin">📡</div>
+                    </div>
+                `;
+                const gwTooltipHtml = `
+                    <div class="font-mono text-xs p-1 leading-snug">
+                        <div class="font-black text-cyan-300 flex items-center gap-1.5">
+                            <span>📡</span> <span>${gw.node_id}</span>
+                        </div>
+                        <div class="text-[10px] text-white font-bold">${gw.name}</div>
+                        <div class="text-[9px] text-emerald-400 mt-1">● STATUS: ${gw.status}</div>
+                        <div class="text-[8px] text-slate-400 mt-0.5">LAT: ${gw.lat.toFixed(4)} | LON: ${gw.lon.toFixed(4)}</div>
+                    </div>
+                `;
+
+                if (!gatewayMarker) {
+                    gatewayMarker = L.marker([gw.lat, gw.lon], {
+                        pane: 'markerPane',
+                        icon: L.divIcon({
+                            html: gwMarkerHtml,
+                            className: '',
+                            iconSize: [32, 32],
+                            iconAnchor: [16, 16]
+                        })
+                    }).addTo(map);
+                    gatewayMarker.bindTooltip(gwTooltipHtml, {
+                        direction: 'top',
+                        className: 'font-mono text-xs bg-slate-900/95 text-white border border-cyan-500/50 shadow-xl'
+                    });
+                } else {
+                    gatewayMarker.setLatLng([gw.lat, gw.lon]);
+                    gatewayMarker.setTooltipContent(gwTooltipHtml);
+                }
+
+                // Render Propagating LoRa Waves from Gateway (Transparent concentric dotted blue rings)
+                if (!gatewayWavesGroup) {
+                    gatewayWavesGroup = L.featureGroup().addTo(map);
+                    GATEWAY_PROPAGATION_RADII.forEach((r, idx) => {
+                        const circle = L.circle([gw.lat, gw.lon], {
+                            radius: r,
+                            pane: 'zonePane',
+                            color: '#38bdf8',          // Dotted blue line
+                            weight: 1.5,
+                            dashArray: '5, 8',          // Concentric circle of dotted blue lines
+                            fillColor: '#0284c7',       // Transparent blue
+                            fillOpacity: 0.02 + (GATEWAY_PROPAGATION_RADII.length - idx) * 0.005,
+                            className: 'gateway-wave-ring'
+                        });
+                        // Gateway wave tooltip removed for clean map
+                        gatewayWavesGroup.addLayer(circle);
+                    });
+                } else {
+                    gatewayWavesGroup.eachLayer(layer => {
+                        if (layer.setLatLng) layer.setLatLng([gw.lat, gw.lon]);
+                    });
+                }
+
+                // Render dynamic LoRa RF link lines (Nodes ➔ Gateway)
+                if (gw.rf_links) {
+                    gw.rf_links.forEach(link => {
+                        const linkKey = `${link.source}-${link.target}`;
+                        const rssi = link.rssi_dbm || -65.0;
+                        let linkColor = '#10b981'; // Nominal RF Green
+                        if (rssi < -75) linkColor = '#ef4444'; // Critical RF Red
+                        else if (rssi < -68) linkColor = '#f59e0b'; // Creep RF Amber
+
+                        const linkTooltip = `
+                            <div class="font-mono text-xs p-1">
+                                <p class="font-bold text-cyan-300">LoRa RF Link: ${link.source} ➔ ${link.target}</p>
+                                <p class="text-[9px] text-slate-300 mt-0.5">Filtered RSSI: <b class="text-white">${rssi.toFixed(1)} dBm</b> | SNR: <b class="text-white">${link.snr_db.toFixed(1)} dB</b></p>
+                                <p class="text-[9px] text-slate-300">Estimated Dist: <b class="text-white">${link.distance_m} m</b> | Rel Disp: <b class="text-amber-300">${link.rel_displacement_m > 0 ? '+' : ''}${link.rel_displacement_m} m</b></p>
+                                <p class="text-[9px] text-cyan-400">MDS Deformation: <b class="text-white">${link.mds_displacement_m} m</b></p>
+                            </div>
+                        `;
+
+                        if (!rfLinkPolylines[linkKey]) {
+                            const line = L.polyline([link.source_coords, link.target_coords], {
+                                color: linkColor,
+                                weight: 2,
+                                opacity: 0.75,
+                                className: 'rf-link-line'
+                            }).addTo(map);
+                            line.bindTooltip(linkTooltip, {
+                                sticky: true,
+                                className: 'bg-slate-900/95 border border-slate-700 shadow-xl'
+                            });
+                            rfLinkPolylines[linkKey] = line;
+                        } else {
+                            rfLinkPolylines[linkKey].setLatLngs([link.source_coords, link.target_coords]);
+                            rfLinkPolylines[linkKey].setStyle({ color: linkColor });
+                            rfLinkPolylines[linkKey].setTooltipContent(linkTooltip);
+                        }
+                    });
+                }
+            }
+
+            const allNodeIds = ['NODE_01', 'NODE_02', 'NODE_03'];
+            if (data.nodes) {
+                Object.keys(data.nodes).forEach(k => {
+                    if (!allNodeIds.includes(k)) allNodeIds.push(k);
+                });
+            }
+
+            let onlineCount = 0;
+            let redAlertNodesCount = 0;
+
+            allNodeIds.forEach(nodeId => {
+                const rawNodeData = (data.nodes && data.nodes[nodeId]) ? data.nodes[nodeId] : null;
+                const nodeData = rawNodeData || {
+                    lat: (NODE_ZONE_LOOKUP[nodeId] ? NODE_ZONE_LOOKUP[nodeId].lat : 11.5630),
+                    lon: (NODE_ZONE_LOOKUP[nodeId] ? NODE_ZONE_LOOKUP[nodeId].lon : 79.4835),
+                    fos: 2.50,
+                    risk_score: 0.0,
+                    status: 'OFFLINE',
+                    reading_count: 0,
+                    last_seen_sec: 99999,
+                    velocity: 0.0,
+                    metrics: { tilt_total_deg: 0.0, vibration_peak_g: 0.0, tilt_pitch_deg: 0.0, tilt_roll_deg: 0.0 }
+                };
+
+                const isOffline = !nodeData.reading_count || nodeData.reading_count === 0 || nodeData.status === 'OFFLINE' || (nodeData.last_seen_sec !== undefined && nodeData.last_seen_sec > 8);
+                if (!isOffline) {
+                    onlineCount++;
+                }
+
+                const risk = nodeData.risk_score || 0;
+                if (!isOffline && risk > globalMaxRisk) globalMaxRisk = risk;
+
+                const isCritical = !isOffline && (risk > 0.65 || (nodeData.fos !== undefined && nodeData.fos < 1.0) || nodeData.safety_override || nodeData.status === 'CRITICAL');
+                const isCalibrating = !isOffline && nodeData.status === 'CALIBRATING';
+
+                if (isCritical) {
+                    redAlertNodesCount++;
+                }
+
+                // Alarm Trigger (slide-in toast + screen flash - strictly 1 per node)
+                const logKey = `${nodeId}-${isCritical ? 'CRIT' : isOffline ? 'OFFLINE' : 'STABLE'}`;
+                if (isCritical && !loggedEvents.has(logKey)) {
+                    triggerCriticalAlarm(nodeId, nodeData.safety_override ? "Kinematic Override: Velocity > 15 mm/h" : "Tertiary Creep Acceleration", "CRITICAL");
+                    loggedEvents.add(logKey);
+                }
+
+                // Sparkline generation from tilt history
+                const sparkSvg = generateSparklineSvg(nodeData.history_tilt || [], isCritical, false);
+
+                // Sensor Row
+                const row = document.createElement('div');
+                let borderBg = 'bg-slate-800/40 border-slate-700/60 hover:bg-slate-800';
+                let idColor = 'text-slate-200';
+                let statusDotColor = 'bg-emerald-400';
+
+                let failureBadgeHtml = '';
+                if (isOffline) {
+                    borderBg = 'bg-slate-900/40 border-slate-800/80 hover:bg-slate-850/50';
+                    idColor = 'text-slate-400';
+                    statusDotColor = 'bg-slate-500';
+                    failureBadgeHtml = `<div class="mt-1 px-1.5 py-0.5 rounded bg-slate-800/80 text-slate-400 text-[8px] font-mono border border-slate-700/80 flex items-center gap-1">AWAITING SENSOR TELEMETRY</div>`;
+                } else if (isCritical) {
+                    borderBg = 'bg-rose-950/60 border-rose-500/80 hover:bg-rose-900/50 shadow-[0_0_15px_rgba(244,63,94,0.4)] animate-pulse';
+                    idColor = 'text-rose-400';
+                    statusDotColor = 'bg-rose-500 animate-ping';
+                } else if (isCalibrating) {
+                    idColor = 'text-cyan-400';
+                    statusDotColor = 'bg-cyan-400 animate-pulse';
+                }
+
+                row.className = `p-2.5 mb-1.5 rounded-xl border ${borderBg} flex flex-col cursor-pointer transition`;
+                row.onclick = () => openHUD(nodeId);
+
+                const zone = NODE_ZONE_LOOKUP[nodeId];
+                const zoneBadgeHtml = zone ? `
+                    <span class="text-[8px] font-mono font-extrabold px-1.5 py-0.5 rounded border leading-none" style="background:${zone.bg}; border-color:${zone.border}; color:${zone.color}">
+                        ${zone.code}
+                    </span>
+                ` : '';
+
+                const distVal = nodeData.distance_m || 115.0;
+                const m = nodeData.metrics || {};
+                const tiltTot = (m.tilt_total_deg !== undefined) ? m.tilt_total_deg : 0.0;
+                const vibPeakVal = (m.vibration_peak_g !== undefined) ? m.vibration_peak_g : 0.0;
+
+                const tiltDisplay = isOffline ? '--' : `${tiltTot.toFixed(1)}°`;
+                const vibDisplay = isOffline ? '--' : `${vibPeakVal.toFixed(2)}g`;
+                const fosDisplay = isOffline ? '--' : (nodeData.fos !== undefined ? nodeData.fos : 2.50).toFixed(2);
+                const riskPctText = isOffline ? 'OFFLINE' : `${(risk * 100).toFixed(0)}%`;
+                const subStatusText = isOffline ? 'NO TELEMETRY' : (nodeData.status || 'SAFE');
+
+                row.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="flex items-center space-x-2">
+                            <span class="h-2 w-2 rounded-full ${statusDotColor} flex-shrink-0"></span>
+                            <div>
+                                <div class="flex items-center space-x-1.5">
+                                    <span class="font-mono font-black text-xs ${idColor}">${nodeId}</span>
+                                    ${zoneBadgeHtml}
+                                    <span class="text-[9px] font-mono text-slate-400">(${isOffline ? '-- m' : distVal.toFixed(1) + 'm'})</span>
+                                </div>
+                                <div class="flex items-center gap-1.5 mt-0.5">
+                                    <span class="text-[9px] font-mono font-bold ${isOffline ? 'text-slate-400 bg-slate-900/60 border-slate-800' : 'text-cyan-300 bg-cyan-950/60 border-cyan-800/40'} px-1.5 py-0.2 rounded border">
+                                        TILT: ${tiltDisplay}
+                                    </span>
+                                    <span class="text-[9px] font-mono font-bold ${isOffline ? 'text-slate-400 bg-slate-900/60 border-slate-800' : 'text-purple-300 bg-purple-950/60 border-purple-800/40'} px-1.5 py-0.2 rounded border">
+                                        VIB: ${vibDisplay}
+                                    </span>
+                                    <span class="text-[9px] font-mono text-slate-400">
+                                        FoS: <b class="${isOffline ? 'text-slate-500' : (isCritical ? 'text-rose-400' : 'text-emerald-400')} transition-all duration-700">${fosDisplay}</b>
+                                    </span>
+                                </div>
+                                ${failureBadgeHtml}
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xs font-mono font-black ${isOffline ? 'text-slate-500' : (isCritical ? 'text-rose-400' : 'text-emerald-400')} transition-all duration-700">
+                                ${riskPctText}
+                            </span>
+                            <div class="text-[8px] font-mono text-slate-500 uppercase">${subStatusText}</div>
+                        </div>
+                    </div>
+                `;
+                nodeList.appendChild(row);
+
+                // Live Incident Dispatch & Abnormal Movement Detection (only when online)
+                if (!isOffline) {
+                    checkAbnormalMovement(nodeId, nodeData, zone, isCritical, false);
+                }
+
+                // 3. Update Map Marker Pins (Strictly on top in markerPane)
+                let markerPinClass = isOffline 
+                    ? 'node-marker-pin-offline' 
+                    : (isCritical 
+                        ? 'node-marker-pin pulse-danger' 
+                        : (nodeId === 'NODE_02' ? 'node-marker-pin pulse-blue' : 'node-marker-pin pulse-safe'));
+
+                const markerHtml = `
+                    <div class="node-marker-container">
+                        <div class="${markerPinClass}">${nodeId.replace('NODE_0', 'N')}</div>
+                    </div>
+                `;
+
+                const zoneLabel = zone ? `<div class="text-[9px] font-mono font-bold" style="color:${zone.color}">${zone.code} &bull; ${zone.name}</div>` : '';
+                const tooltipHtml = isOffline ? `
+                    <div class="font-mono text-xs p-1 leading-snug">
+                        <div class="font-black text-slate-300">${nodeId}</div>
+                        ${zoneLabel}
+                        <div class="text-[10px] text-slate-400 mt-0.5">STATUS: <b>OFFLINE</b> (No Telemetry)</div>
+                    </div>
+                ` : `
+                    <div class="font-mono text-xs p-1 leading-snug">
+                        <div class="font-black text-white">${nodeId}</div>
+                        ${zoneLabel}
+                        <div class="text-[10px] text-slate-300 mt-0.5">FoS: <b class="text-white">${(nodeData.fos !== undefined ? nodeData.fos : 2.50).toFixed(2)}</b> | ${nodeData.velocity.toFixed(1)} mm/h</div>
+                    </div>
+                `;
+
+                if (!nodeMarkers[nodeId]) {
+                    const marker = L.marker([nodeData.lat, nodeData.lon], {
+                        pane: 'markerPane',
+                        icon: L.divIcon({
+                            html: markerHtml,
+                            className: '',
+                            iconSize: [24, 24],
+                            iconAnchor: [12, 12]
+                        })
+                    }).addTo(map);
+
+                    marker.on('click', () => openHUD(nodeId));
+                    marker.bindTooltip(tooltipHtml, {
+                        direction: 'top',
+                        className: 'font-mono text-xs bg-slate-900/95 text-white border border-slate-700 shadow-xl'
+                    });
+                    nodeMarkers[nodeId] = marker;
+                } else {
+                    nodeMarkers[nodeId].setIcon(L.divIcon({
+                        html: markerHtml,
+                        className: '',
+                        iconSize: [24, 24],
+                        iconAnchor: [12, 12]
+                    }));
+                    nodeMarkers[nodeId].setTooltipContent(tooltipHtml);
+                }
+            });
+
+            // Update active nodes count
+            const activeNodesCountEl = document.getElementById('active-nodes-count');
+            if (activeNodesCountEl) {
+                activeNodesCountEl.textContent = `${onlineCount}/${allNodeIds.length} Nodes Online`;
+                if (onlineCount === 0) {
+                    activeNodesCountEl.className = "text-[10px] font-mono text-slate-500 font-bold tabular-nums";
+                } else if (onlineCount === allNodeIds.length) {
+                    activeNodesCountEl.className = "text-[10px] font-mono text-emerald-400 font-bold tabular-nums";
+                } else {
+                    activeNodesCountEl.className = "text-[10px] font-mono text-amber-400 font-bold tabular-nums";
+                }
+            }
+
+            // Identify highest risk node for bottom display among online nodes
+            let highestNode = "NODE_01";
+            let highestFos = 2.50;
+            let highestTilt = 0;
+            let highestVib = 0;
+            let foundOnline = false;
+
+            if (data.nodes) {
+                for (const [nid, nd] of Object.entries(data.nodes)) {
+                    const nodeOffline = !nd.reading_count || nd.reading_count === 0 || nd.status === 'OFFLINE' || (nd.last_seen_sec !== undefined && nd.last_seen_sec > 8);
+                    if (!nodeOffline) {
+                        foundOnline = true;
+                        if ((nd.risk_score || 0) >= globalMaxRisk) {
+                            highestNode = nid;
+                            highestFos = nd.fos || 2.50;
+                            if (nd.metrics) {
+                                highestTilt = nd.metrics.tilt_total_deg || 0;
+                                highestVib = nd.metrics.vibration_peak_g || 0;
+                            }
+                        }
+                    }
+                }
+            }
+
+            const isAllNodesOffline = (onlineCount === 0) || !foundOnline || data.global_status === 'OFFLINE';
+            const isHazardSpreading = Boolean(data.is_spreading);
+            const hasCriticalAlarm = !isAllNodesOffline && (globalMaxRisk > 0.60 || data.global_status === 'CRITICAL' || redAlertNodesCount > 0 || (highestFos < 1.0) || (data.active_alarms && data.active_alarms.some(a => a.severity === 'CRITICAL' || a.severity === 'CRITICAL_RUNAWAY')));
+
+            // DOM Elements
+            const alertCard = document.getElementById('system-alert-card');
+            const alertText = document.getElementById('alert-text');
+            const riskBadge = document.getElementById('global-risk-badge');
+            const strobe = document.getElementById('alarm-strobe');
+            const bottomBar = document.getElementById('bottom-alarm-bar');
+            const bottomBadge = document.getElementById('bottom-status-badge');
+            const bottomDot = document.getElementById('bottom-status-dot');
+            const bottomLabel = document.getElementById('bottom-status-label');
+            const bottomText = document.getElementById('bottom-alarm-text');
+            const ackBox = document.getElementById('ack-alarm-box');
+            const bottomTiltEl = document.getElementById('bottom-node1-tilt');
+            const bottomFosEl = document.getElementById('bottom-fos-val');
+            const cornerVignette = document.getElementById('subsidence-corner-vignette');
+
+            const opIconWrapper = document.getElementById('operator-status-icon-wrapper');
+            const opIcon = document.getElementById('operator-status-icon');
+            const opTitle = document.getElementById('operator-status-title');
+            const opBadge = document.getElementById('operator-status-badge');
+            const opDirEn = document.getElementById('operator-directive-en');
+            const opMuster = document.getElementById('operator-muster-text');
+            const opAckBtn = document.getElementById('operator-ack-alarm-btn');
+            const opFos = document.getElementById('operator-fos-val');
+            const opNodes = document.getElementById('operator-nodes-val');
+            const opDot = document.getElementById('operator-header-dot');
+
+                        // Detect stage change to automatically un-dismiss the operator banner with smooth entrance
+            const currentStage = hasCriticalAlarm ? 'EVACUATE' : (isAllNodesOffline ? 'OFFLINE' : 'NOMINAL');
+            if (previousOperatorStage !== null && previousOperatorStage !== currentStage) {
+                showOperatorBanner();
+            }
+            previousOperatorStage = currentStage;
+
+            // EXACT THREE RESULTS:
+            // 1. EVACUATE PIT (Hazard / critical displacement / surge)
+            // 2. OFFLINE (Nodes not connected / no telemetry)
+            // 3. NOMINAL (Online and normal no-problem mode)
+
+            if (hasCriticalAlarm) {
+                // ==========================================
+                // RESULT 1: EVACUATE PIT MODE
+                // ==========================================
+                document.body.classList.add('critical-strobe');
+                if (redAlertNodesCount >= 2 || isHazardSpreading) {
+                    if (!isAlarmAcknowledged) document.body.classList.add('multi-node-blinking-red-alarm');
+                } else {
+                    document.body.classList.remove('multi-node-blinking-red-alarm');
+                }
+
+                // Left benchmark card
+                if (alertCard) alertCard.className = "p-2.5 rounded-xl border bg-rose-950/70 border-rose-500/80 mb-3 shadow-[0_0_15px_rgba(244,63,94,0.4)] animate-pulse transition-colors";
+                if (alertText) {
+                    alertText.textContent = isHazardSpreading ? "RUNAWAY SUBSIDENCE" : "EVACUATE PIT";
+                    alertText.className = "text-lg font-bold font-mono tracking-wide text-rose-400 mt-1";
+                }
+                if (riskBadge) {
+                    riskBadge.textContent = "CRITICAL HAZARD";
+                    riskBadge.className = "text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-rose-900 text-rose-200 border border-rose-500 tabular-nums";
+                }
+
+                // Progressive Subsidence Duration Tracking
+                continuousAbnormalSeconds = Math.min(60, continuousAbnormalSeconds + 1);
+                const durationFactor = Math.min(1.0, continuousAbnormalSeconds / 30.0);
+                const redAlpha = Math.min(0.98, 0.48 + (durationFactor * 0.50));
+                const cornerRadius = 25 + Math.round(durationFactor * 40);
+                const edgeSpread = 30 + Math.round(durationFactor * 85);
+                const pulseRate = Math.max(0.45, 1.3 - (durationFactor * 0.85));
+                const redBorderW = Math.min(8, 3.0 + (durationFactor * 5.0));
+
+                if (cornerVignette) {
+                    cornerVignette.style.setProperty('--vignette-base-opacity', '1');
+                    cornerVignette.style.setProperty('--subsidence-pulse-speed', `${pulseRate.toFixed(2)}s`);
+                    cornerVignette.className = "subsidence-pulsing";
+                    cornerVignette.style.background = `
+                        radial-gradient(circle at 0% 0%, rgba(239, 68, 68, ${redAlpha.toFixed(3)}) 0%, transparent ${cornerRadius}%),
+                        radial-gradient(circle at 100% 0%, rgba(239, 68, 68, ${redAlpha.toFixed(3)}) 0%, transparent ${cornerRadius}%),
+                        radial-gradient(circle at 0% 100%, rgba(239, 68, 68, ${redAlpha.toFixed(3)}) 0%, transparent ${cornerRadius}%),
+                        radial-gradient(circle at 100% 100%, rgba(239, 68, 68, ${redAlpha.toFixed(3)}) 0%, transparent ${cornerRadius}%),
+                        inset 0 0 ${edgeSpread}px rgba(220, 38, 38, ${(redAlpha * 0.75).toFixed(3)})
+                    `;
+                    cornerVignette.style.opacity = "1";
+                }
+
+                if (strobe) {
+                    if (isAlarmAcknowledged) {
+                        strobe.className = "strobe-acknowledged";
+                        strobe.style.border = "3px solid rgba(245, 158, 11, 0.65)";
+                        strobe.style.boxShadow = "inset 0 0 45px 12px rgba(245, 158, 11, 0.45)";
+                        strobe.style.opacity = "1";
+                    } else {
+                        strobe.className = "";
+                        strobe.style.border = `${redBorderW.toFixed(1)}px solid rgba(239, 68, 68, ${redAlpha.toFixed(2)})`;
+                        strobe.style.boxShadow = `inset 0 0 ${edgeSpread}px ${Math.round(edgeSpread * 0.35)}px rgba(239, 68, 68, ${redAlpha.toFixed(2)})`;
+                        strobe.style.opacity = "1";
+                    }
+                }
+
+                if (!isAlarmAcknowledged) {
+                    document.body.classList.add('pit-evacuate-active');
+                    playAlarmSiren();
+                }
+
+                // Bottom bar
+                if (bottomBar) bottomBar.className = "fixed bottom-0 left-0 right-0 h-9 z-40 px-4 bg-red-950/95 backdrop-blur-md border-t-2 border-red-500 shadow-[0_0_35px_rgba(239,68,68,0.7)] flex items-center justify-between text-xs font-mono select-none animate-pulse";
+                if (bottomBadge) bottomBadge.className = "px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-red-900 text-red-100 border border-red-400 flex items-center gap-1.5 flex-shrink-0 shadow-[0_0_10px_rgba(239,68,68,0.8)]";
+                if (bottomDot) bottomDot.className = "h-2 w-2 rounded-full bg-red-300 animate-ping";
+                if (bottomLabel) bottomLabel.textContent = isHazardSpreading ? "🚨 MULTI-BENCH SPREADING" : "🚨 EVACUATE PIT NOW";
+                if (bottomText) {
+                    bottomText.className = "text-red-200 text-[11px] truncate tracking-wide font-bold";
+                    bottomText.textContent = isHazardSpreading 
+                        ? `CRITICAL MULTI-BENCH PROPAGATION: Failure spreading across sectors! | ${highestNode} TILT: ${highestTilt.toFixed(1)}° | VIB: ${highestVib.toFixed(2)}g | FoS: ${highestFos.toFixed(2)}`
+                        : `CRITICAL GROUND SUBSIDENCE HAZARD: EVACUATE ALL BENCHES IMMEDIATELY | ${highestNode} TILT: ${highestTilt.toFixed(1)}° | VIB: ${highestVib.toFixed(3)}g | FoS: ${highestFos.toFixed(2)} (< 1.0)`;
+                }
+                if (bottomTiltEl) bottomTiltEl.textContent = `${highestTilt.toFixed(1)}°`;
+                if (bottomFosEl) bottomFosEl.textContent = highestFos.toFixed(2);
+
+                // Acknowledge box
+                criticalSustainTicks++;
+                const nowTime = Date.now();
+                const shouldDisplayAck = !isAlarmAcknowledged && (criticalSustainTicks >= 3) && (nowTime > ackCooldownTimestamp);
+                if (ackBox && shouldDisplayAck) {
+                    ackBox.classList.remove('translate-y-32', 'opacity-0', 'pointer-events-none');
+                    ackBox.classList.add('translate-y-0', 'opacity-100', 'pointer-events-auto');
+                    const ackNodeEl = document.getElementById('ack-box-node');
+                    if (ackNodeEl) ackNodeEl.textContent = isHazardSpreading ? `MULTI-BENCH SPREADING — TILT ${highestTilt.toFixed(1)}°` : `${highestNode} — TILT ${highestTilt.toFixed(1)}°`;
+                }
+
+                // Operator Light-Themed Alert Panel (Result 1: Evacuate Pit)
+                const opSurface = document.getElementById('operator-panel-surface');
+                const opHeaderStrip = document.getElementById('operator-header-strip');
+                const opHeaderTitle = document.getElementById('operator-header-title');
+                const opDismissBtn = document.getElementById('dismiss-operator-banner');
+
+                if (opSurface) {
+                    opSurface.className = "bg-rose-50/98 backdrop-blur-xl border-2 border-rose-400 rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3 shadow-[0_15px_35px_-5px_rgba(244,63,94,0.35),0_0_20px_rgba(244,63,94,0.2)] animate-pulse transition-all duration-300";
+                }
+                if (opHeaderStrip) opHeaderStrip.className = "flex items-center justify-between pb-1.5 mb-2 border-b border-rose-200 text-[10px] font-mono";
+                if (opHeaderTitle) opHeaderTitle.className = "font-bold tracking-wider text-rose-900";
+                if (opDismissBtn) opDismissBtn.className = "ml-1 w-5 h-5 rounded-full bg-rose-200/80 hover:bg-rose-300 text-rose-800 hover:text-rose-950 flex items-center justify-center transition-all cursor-pointer font-bold leading-none text-xs";
+                if (opIconWrapper) opIconWrapper.className = "w-9 h-9 rounded-xl bg-rose-100 border border-rose-300 flex items-center justify-center flex-shrink-0 shadow-xs";
+                if (opIcon) {
+                    opIcon.className = "w-5 h-5 text-rose-600 animate-pulse";
+                    opIcon.setAttribute('stroke', '#e11d48');
+                    opIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 8v4m0 4h.01M6.708 3h10.584L21 6.708v10.584L17.292 21H6.708L3 17.292V6.708L6.708 3zM10 10l4 4m0-4l-4 4"/>`;
+                }
+                if (opTitle) {
+                    opTitle.textContent = isHazardSpreading ? "SECTOR 4: RUNAWAY SUBSIDENCE" : "SECTOR 4: CRITICAL SUBSIDENCE";
+                    opTitle.className = "text-sm sm:text-base font-extrabold tracking-tight font-mono text-rose-950 truncate";
+                }
+                if (opBadge) {
+                    opBadge.textContent = "EVACUATE PIT";
+                    opBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-rose-600 text-white border border-rose-500 flex-shrink-0 shadow-xs";
+                }
+                if (opDirEn) {
+                    opDirEn.textContent = "EVACUATE PIT FLOOR. PROCEED TO MUSTER STATION B.";
+                    opDirEn.className = "text-[11px] sm:text-xs font-bold text-rose-800 tracking-wide truncate";
+                }
+                if (opMuster) {
+                    opMuster.textContent = "MUSTER STATION B (NORTH RIDGE)";
+                    opMuster.className = "text-[10px] font-mono font-bold text-rose-900";
+                }
+                if (opAckBtn && !isAlarmAcknowledged) opAckBtn.classList.remove('hidden');
+                if (opDot) opDot.className = "inline-block w-2 h-2 rounded-full bg-rose-500 animate-ping";
+                if (opFos) {
+                    opFos.textContent = highestFos.toFixed(2);
+                    opFos.className = "text-rose-950 font-black tabular-nums";
+                }
+                if (opNodes) {
+                    opNodes.textContent = `${onlineCount}/${allNodeIds.length} ONLINE`;
+                    opNodes.className = "text-rose-950 font-bold tabular-nums";
+                }
+
+            } else if (isAllNodesOffline) {
+                // ==========================================
+                // RESULT 2: OFFLINE MODE (Nodes Not Connected)
+                // ==========================================
+                continuousAbnormalSeconds = 0;
+                criticalSustainTicks = 0;
+                document.body.classList.remove('pit-evacuate-active', 'critical-strobe', 'multi-node-blinking-red-alarm');
+                if (cornerVignette) { cornerVignette.style.opacity = "0"; cornerVignette.className = ""; }
+                if (strobe) { strobe.className = ""; strobe.style.opacity = "0"; strobe.style.boxShadow = "none"; strobe.style.border = "none"; }
+                if (ackBox) { ackBox.classList.add('translate-y-32', 'opacity-0', 'pointer-events-none'); ackBox.classList.remove('translate-y-0', 'opacity-100', 'pointer-events-auto'); }
+
+                // Left benchmark card
+                if (alertCard) alertCard.className = "p-2.5 rounded-xl border bg-slate-900/80 border-slate-700/80 mb-3 transition-colors";
+                if (alertText) {
+                    alertText.textContent = "OFFLINE";
+                    alertText.className = "text-lg font-bold font-mono tracking-wide text-slate-400 mt-1";
+                }
+                if (riskBadge) {
+                    riskBadge.textContent = "NO TELEMETRY";
+                    riskBadge.className = "text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-slate-800 text-slate-400 border border-slate-700 tabular-nums";
+                }
+
+                // Bottom bar
+                if (bottomBar) bottomBar.className = "fixed bottom-0 left-0 right-0 h-9 z-40 px-4 bg-slate-950/90 backdrop-blur-md border-t border-slate-800 flex items-center justify-between text-xs font-mono select-none";
+                if (bottomBadge) bottomBadge.className = "px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1.5 flex-shrink-0";
+                if (bottomDot) bottomDot.className = "h-2 w-2 rounded-full bg-slate-500";
+                if (bottomLabel) bottomLabel.textContent = "SYSTEM OFFLINE";
+                if (bottomText) {
+                    bottomText.className = "text-slate-400 text-[11px] truncate tracking-wide font-medium";
+                    bottomText.textContent = "Awaiting physical sensor telemetry packets • No active LoRa nodes detected";
+                }
+                if (bottomTiltEl) bottomTiltEl.textContent = "--";
+                if (bottomFosEl) bottomFosEl.textContent = "--";
+
+                // Operator Light-Themed Offline Panel (Result 2: Offline)
+                const opSurface = document.getElementById('operator-panel-surface');
+                const opHeaderStrip = document.getElementById('operator-header-strip');
+                const opHeaderTitle = document.getElementById('operator-header-title');
+                const opDismissBtn = document.getElementById('dismiss-operator-banner');
+
+                if (opSurface) {
+                    opSurface.className = "bg-white/95 backdrop-blur-xl border border-slate-200/90 rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3 shadow-[0_12px_35px_-5px_rgba(0,0,0,0.25),0_0_15px_rgba(255,255,255,0.15)] transition-all duration-300";
+                }
+                if (opHeaderStrip) opHeaderStrip.className = "flex items-center justify-between pb-1.5 mb-2 border-b border-slate-200 text-[10px] font-mono";
+                if (opHeaderTitle) opHeaderTitle.className = "font-bold tracking-wider text-slate-700";
+                if (opDismissBtn) opDismissBtn.className = "ml-1 w-5 h-5 rounded-full bg-slate-200/80 hover:bg-slate-300 text-slate-600 hover:text-slate-900 flex items-center justify-center transition-all cursor-pointer font-bold leading-none text-xs";
+                if (opIconWrapper) opIconWrapper.className = "w-9 h-9 rounded-xl bg-slate-100 border border-slate-300 flex items-center justify-center flex-shrink-0 shadow-xs";
+                if (opIcon) {
+                    opIcon.className = "w-5 h-5 text-slate-500";
+                    opIcon.setAttribute('stroke', '#64748b');
+                    opIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728m0 0l-2.829-2.829m2.829 2.829L21 21M15.536 8.464a5 5 0 010 7.072m0 0l-2.829-2.829m-4.243 4.243a9 9 0 01-2.828-6.364 9 9 0 012.828-6.364m2.829 2.829a5 5 0 00-1.415 3.535c0 1.38.56 2.63 1.415 3.535M12 12h.01"/>`;
+                }
+                if (opTitle) {
+                    opTitle.textContent = "SECTOR 4: OFFLINE";
+                    opTitle.className = "text-sm sm:text-base font-extrabold tracking-tight font-mono text-slate-800 truncate";
+                }
+                if (opBadge) {
+                    opBadge.textContent = "OFFLINE";
+                    opBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-200 text-slate-700 border border-slate-300 flex-shrink-0";
+                }
+                if (opDirEn) {
+                    opDirEn.textContent = "NO SENSOR TELEMETRY DETECTED. CONNECT NODES OR START GATEWAY.";
+                    opDirEn.className = "text-[11px] sm:text-xs font-semibold text-slate-600 tracking-wide truncate";
+                }
+                if (opMuster) {
+                    opMuster.textContent = "STANDBY FOR TELEMETRY";
+                    opMuster.className = "text-[10px] font-mono font-bold text-slate-700";
+                }
+                if (opAckBtn) opAckBtn.classList.add('hidden');
+                if (opDot) opDot.className = "inline-block w-2 h-2 rounded-full bg-slate-400";
+                if (opFos) {
+                    opFos.textContent = "--";
+                    opFos.className = "text-slate-800 font-bold tabular-nums";
+                }
+                if (opNodes) {
+                    opNodes.textContent = `0/${allNodeIds.length} ONLINE`;
+                    opNodes.className = "text-slate-800 font-bold tabular-nums";
+                }
+
+            } else {
+                // ==========================================
+                // RESULT 3: NOMINAL MODE (Online & Normal)
+                // ==========================================
+                continuousAbnormalSeconds = 0;
+                criticalSustainTicks = 0;
+                document.body.classList.remove('pit-evacuate-active', 'critical-strobe', 'multi-node-blinking-red-alarm');
+                isAlarmAcknowledged = false;
+                if (cornerVignette) { cornerVignette.style.opacity = "0"; cornerVignette.className = ""; }
+                if (strobe) { strobe.className = ""; strobe.style.opacity = "0"; strobe.style.boxShadow = "none"; strobe.style.border = "none"; }
+                if (ackBox) { ackBox.classList.add('translate-y-32', 'opacity-0', 'pointer-events-none'); ackBox.classList.remove('translate-y-0', 'opacity-100', 'pointer-events-auto'); }
+
+                // Left benchmark card
+                if (alertCard) alertCard.className = "p-2.5 rounded-xl border bg-emerald-950/40 border-emerald-500/40 mb-3 transition-colors";
+                if (alertText) {
+                    alertText.textContent = "NOMINAL";
+                    alertText.className = "text-lg font-bold font-mono tracking-wide text-emerald-400 mt-1";
+                }
+                if (riskBadge) {
+                    riskBadge.textContent = `MAX RISK: ${(globalMaxRisk * 100).toFixed(0)}%`;
+                    riskBadge.className = "text-[9px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-emerald-900/60 text-emerald-300 border border-emerald-500/30 tabular-nums";
+                }
+
+                // Bottom bar
+                if (bottomBar) bottomBar.className = "fixed bottom-0 left-0 right-0 h-9 z-40 px-4 bg-slate-950/90 backdrop-blur-md border-t border-slate-800 flex items-center justify-between text-xs font-mono select-none";
+                if (bottomBadge) bottomBadge.className = "px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5 flex-shrink-0";
+                if (bottomDot) bottomDot.className = "h-2 w-2 rounded-full bg-emerald-400";
+                if (bottomLabel) bottomLabel.textContent = "ALL SECTORS NOMINAL";
+                if (bottomText) {
+                    bottomText.className = "text-slate-300 text-[11px] truncate tracking-wide font-medium";
+                    bottomText.textContent = `Continuous geotechnical slope stability monitoring active across Neyveli Sector 4 • All physical telemetry links healthy • FoS: ${highestFos.toFixed(2)} (SAFE)`;
+                }
+                if (bottomTiltEl) bottomTiltEl.textContent = `${highestTilt.toFixed(1)}°`;
+                if (bottomFosEl) bottomFosEl.textContent = highestFos.toFixed(2);
+
+                // Operator Light-Themed Nominal Panel (Result 3: Stable Nominal)
+                const opSurface = document.getElementById('operator-panel-surface');
+                const opHeaderStrip = document.getElementById('operator-header-strip');
+                const opHeaderTitle = document.getElementById('operator-header-title');
+                const opDismissBtn = document.getElementById('dismiss-operator-banner');
+
+                if (opSurface) {
+                    opSurface.className = "bg-emerald-50/95 backdrop-blur-xl border border-emerald-200/90 rounded-2xl px-4 py-2.5 sm:px-5 sm:py-3 shadow-[0_12px_35px_-5px_rgba(16,185,129,0.25),0_0_15px_rgba(255,255,255,0.15)] transition-all duration-300";
+                }
+                if (opHeaderStrip) opHeaderStrip.className = "flex items-center justify-between pb-1.5 mb-2 border-b border-emerald-200/80 text-[10px] font-mono";
+                if (opHeaderTitle) opHeaderTitle.className = "font-bold tracking-wider text-emerald-900";
+                if (opDismissBtn) opDismissBtn.className = "ml-1 w-5 h-5 rounded-full bg-emerald-200/80 hover:bg-emerald-300 text-emerald-800 hover:text-emerald-950 flex items-center justify-center transition-all cursor-pointer font-bold leading-none text-xs";
+                if (opIconWrapper) opIconWrapper.className = "w-9 h-9 rounded-xl bg-emerald-100 border border-emerald-300 flex items-center justify-center flex-shrink-0 shadow-xs";
+                if (opIcon) {
+                    opIcon.className = "w-5 h-5 text-emerald-600";
+                    opIcon.setAttribute("stroke", "#059669");
+                    opIcon.innerHTML = `<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 13l4 4L19 7"/>`;
+                }
+                if (opTitle) {
+                    opTitle.textContent = "SECTOR 4: STABLE";
+                    opTitle.className = "text-sm sm:text-base font-extrabold tracking-tight font-mono text-emerald-950 truncate";
+                }
+                if (opBadge) {
+                    opBadge.textContent = "NOMINAL";
+                    opBadge.className = "px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-200 text-emerald-800 border border-emerald-300 flex-shrink-0";
+                }
+                if (opDirEn) {
+                    opDirEn.textContent = "ALL BENCHES OPERATIONAL. NORMAL MONITORING ACTIVE.";
+                    opDirEn.className = "text-[11px] sm:text-xs font-semibold text-emerald-800 tracking-wide truncate";
+                }
+                if (opMuster) {
+                    opMuster.textContent = "MAINTAIN OBSERVATION";
+                    opMuster.className = "text-[10px] font-mono font-bold text-emerald-900";
+                }
+                if (opAckBtn) opAckBtn.classList.add('hidden');
+                if (opDot) opDot.className = "inline-block w-2 h-2 rounded-full bg-emerald-400";
+                if (opFos) {
+                    opFos.textContent = highestFos.toFixed(2);
+                    opFos.className = "text-emerald-950 font-black tabular-nums";
+                }
+                if (opNodes) {
+                    opNodes.textContent = `${onlineCount}/${allNodeIds.length} ONLINE`;
+                    opNodes.className = "text-emerald-950 font-bold tabular-nums";
+                }
+            }
+// 5. Update HUD if a node is currently selected
+            if (activeChartNode && globalState[activeChartNode]) {
+                updateHUDTelemetry(globalState[activeChartNode]);
+            }
+        }
+
+        // ==========================================
+        // 9.5 LIVE INCIDENT DISPATCH CHAT & AUDIT REGISTER
+        // ==========================================
+        let activeIncidents = {};
+        let incidentsHistory = [];
+
+        try {
+            const saved = localStorage.getItem('geotech_incidents');
+            if (saved) incidentsHistory = JSON.parse(saved);
+        } catch(e) {
+            incidentsHistory = [];
+        }
+
+        function updateNotifBadge() {
+            const badge = document.getElementById('notif-badge');
+            const modalCount = document.getElementById('modal-incident-count');
+            const unverifiedCount = incidentsHistory.filter(i => i.status === 'Unverified').length;
+            const totalCount = incidentsHistory.length;
+            
+            if (badge) {
+                badge.textContent = unverifiedCount > 0 ? unverifiedCount : totalCount;
+                badge.className = unverifiedCount > 0 
+                    ? "absolute -top-1 -right-1 px-1.5 py-0.2 rounded-full text-[9px] font-mono font-black bg-red-600 text-white border border-slate-900 shadow-md animate-pulse"
+                    : "absolute -top-1 -right-1 px-1.5 py-0.2 rounded-full text-[9px] font-mono font-black bg-slate-700 text-slate-300 border border-slate-900 shadow-md";
+            }
+            if (modalCount) {
+                modalCount.textContent = `${totalCount} Logged (${unverifiedCount} Unverified)`;
+            }
+        }
+
+        function postIncidentChatCard(inc) {
+            const feed = document.getElementById('incident-chat-feed');
+            if (!feed) return;
+
+            const card = document.createElement('div');
+            card.className = "p-2.5 rounded-lg bg-red-950/70 border border-red-500/70 text-white shadow-md font-mono text-[10px]";
+            card.innerHTML = `
+                <div class="flex items-center justify-between pb-1 mb-1.5 border-b border-red-800/50">
+                    <span class="font-black text-red-400 flex items-center gap-1">
+                        <span class="h-2 w-2 rounded-full bg-red-500 animate-ping"></span>
+                        🚨 ABNORMAL MOVEMENT DETECTED
+                    </span>
+                    <span class="text-[9px] text-slate-400">${inc.startTime}</span>
+                </div>
+                <div class="grid grid-cols-2 gap-x-2 gap-y-1 text-slate-300">
+                    <div><span class="text-slate-500">NODE:</span> <b class="text-white">${inc.nodeId}</b></div>
+                    <div><span class="text-slate-500">PIT:</span> <b class="text-amber-300">${inc.pit}</b></div>
+                    <div><span class="text-slate-500">ZONE:</span> <b class="text-cyan-300">${inc.zone}</b></div>
+                    <div><span class="text-slate-500">COORDS:</span> <b class="text-slate-200">${inc.lat.toFixed(5)}, ${inc.lon.toFixed(5)}</b></div>
+                </div>
+                <div class="mt-2 pt-1.5 border-t border-red-800/40 flex items-center justify-between text-[9px]">
+                    <span class="text-cyan-300">Tilt: <b>${inc.tilt.toFixed(1)}°</b></span>
+                    <span class="text-purple-300">Vib: <b>${inc.vib.toFixed(2)}g</b></span>
+                    <span class="text-red-300 font-bold">FoS: <b>${inc.fos.toFixed(2)}</b></span>
+                </div>
+            `;
+            feed.appendChild(card);
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        function postResolutionChatCard(inc) {
+            const feed = document.getElementById('incident-chat-feed');
+            if (!feed) return;
+
+            const card = document.createElement('div');
+            card.className = "p-2 rounded-lg bg-emerald-950/50 border border-emerald-500/40 text-slate-300 font-mono text-[10px]";
+            card.innerHTML = `
+                <div class="flex items-center justify-between">
+                    <span class="font-bold text-emerald-400 flex items-center gap-1">
+                        <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                        🟢 MOTION STABILIZED: ${inc.nodeId}
+                    </span>
+                    <span class="text-[9px] text-slate-400">${inc.endTime || ''}</span>
+                </div>
+                <div class="text-[9px] text-slate-400 mt-1 flex justify-between items-center">
+                    <span>Duration: <b class="text-white">${inc.durationSec}s</b></span>
+                    <button onclick="toggleIncidentsModal()" class="text-cyan-400 underline hover:text-cyan-300 text-[9px]">Audit & Review Notes →</button>
+                </div>
+            `;
+            feed.appendChild(card);
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        function sendOperatorChat() {
+            const input = document.getElementById('chat-input');
+            if (!input) return;
+            const text = input.value.trim();
+            if (!text) return;
+
+            const feed = document.getElementById('incident-chat-feed');
+            if (feed) {
+                const now = new Date().toLocaleTimeString();
+                const card = document.createElement('div');
+                card.className = "p-2 rounded bg-slate-900 border border-slate-700 text-slate-200 text-[10px] font-mono";
+                card.innerHTML = `
+                    <div class="flex items-center justify-between text-slate-400 text-[9px] mb-0.5">
+                        <span class="text-cyan-400 font-bold">OPERATOR RADIO</span>
+                        <span>${now}</span>
+                    </div>
+                    <div class="text-slate-100 font-medium">${escapeHtml(text)}</div>
+                `;
+                feed.appendChild(card);
+                feed.scrollTop = feed.scrollHeight;
+            }
+            input.value = '';
+        }
+
+        function clearIncidentChat() {
+            const feed = document.getElementById('incident-chat-feed');
+            if (feed) {
+                feed.innerHTML = `
+                    <div class="p-2 rounded bg-slate-900/60 border border-slate-800 text-slate-400 text-[10px]">
+                        <span class="text-cyan-400 font-bold">[SYS READY]</span> Geotechnical AI Incident Dispatch channel active. Live abnormal motion alerts will stream here with coordinates, pit, and zone data.
+                    </div>
+                `;
+            }
+        }
+
+        let hasSpreadingAlertBeenPosted = false;
+
+        function postSpreadingChatCard(incidentsMap) {
+            const feed = document.getElementById('incident-chat-feed');
+            if (!feed) return;
+
+            const nids = Object.keys(incidentsMap).join(' & ');
+            const card = document.createElement('div');
+            card.className = "p-2.5 rounded-lg bg-red-950 border-2 border-red-500 text-white shadow-lg font-mono text-[10px] animate-pulse";
+            card.innerHTML = `
+                <div class="flex items-center justify-between pb-1 mb-1 border-b border-red-700">
+                    <span class="font-black text-red-400 flex items-center gap-1">
+                        <span class="h-2.5 w-2.5 rounded-full bg-red-500 animate-ping"></span>
+                        🚨 MULTI-BENCH SPREADING HAZARD
+                    </span>
+                    <span class="text-[9px] text-red-200 font-bold">${new Date().toLocaleTimeString()}</span>
+                </div>
+                <div class="space-y-1 text-slate-200 text-[10px]">
+                    <div><span class="text-slate-400">PROPAGATING NODES:</span> <b class="text-white">${nids}</b></div>
+                    <div><span class="text-slate-400">PIT:</span> <b class="text-amber-300">Neyveli Mine Pit Sector 4</b></div>
+                    <div><span class="text-slate-400">ZONES:</span> <b class="text-cyan-300">Highwall Bench & Haulage Ramp</b></div>
+                    <div><span class="text-slate-400">STATUS:</span> <b class="text-red-400 font-bold">FAILURE SPREADING ACROSS BENCHES</b></div>
+                </div>
+                <div class="mt-1.5 pt-1 border-t border-red-800/60 text-[9px] text-red-200">
+                    ⚠️ Immediate evacuation ordered for all pit personnel and heavy machinery.
+                </div>
+            `;
+            feed.appendChild(card);
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        function checkAbnormalMovement(nodeId, nodeData, zone, isCritical, isWarning) {
+            const m = nodeData.metrics || {};
+            const tiltTot = (m.tilt_total_deg !== undefined) ? m.tilt_total_deg : 0.0;
+            const vibPeak = (m.vibration_peak_g !== undefined) ? m.vibration_peak_g : 0.0;
+            const fos = nodeData.fos || 2.5;
+
+            // Abnormal movement criteria (calibrated for active movement)
+            const isAbnormal = isCritical || (fos < 1.05) || (vibPeak > 0.20) || (tiltTot > 4.5);
+
+            if (isAbnormal) {
+                if (!activeIncidents[nodeId]) {
+                    const inc = {
+                        id: 'INC-' + Date.now().toString(36).toUpperCase(),
+                        nodeId: nodeId,
+                        pit: 'Neyveli Mine Pit Sector 4',
+                        zone: zone ? `${zone.code} (${zone.name})` : (nodeId === 'NODE_01' ? 'Zone A (North Highwall)' : 'Zone B (East Haulage Ramp)'),
+                        lat: nodeData.lat,
+                        lon: nodeData.lon,
+                        startTime: new Date().toLocaleTimeString(),
+                        startTimestamp: Date.now(),
+                        durationSec: 0,
+                        tilt: tiltTot,
+                        vib: vibPeak,
+                        fos: fos,
+                        status: 'Unverified',
+                        operatorNote: ''
+                    };
+                    activeIncidents[nodeId] = inc;
+                    postIncidentChatCard(inc);
+
+                    // Check if multiple nodes are now abnormal (hazard spreading)
+                    if (Object.keys(activeIncidents).length >= 2 && !hasSpreadingAlertBeenPosted) {
+                        hasSpreadingAlertBeenPosted = true;
+                        postSpreadingChatCard(activeIncidents);
+                    }
+                } else {
+                    // Update peak metrics while ongoing
+                    if (tiltTot > activeIncidents[nodeId].tilt) activeIncidents[nodeId].tilt = tiltTot;
+                    if (vibPeak > activeIncidents[nodeId].vib) activeIncidents[nodeId].vib = vibPeak;
+                    if (fos < activeIncidents[nodeId].fos) activeIncidents[nodeId].fos = fos;
+                }
+            } else {
+                if (activeIncidents[nodeId]) {
+                    const inc = activeIncidents[nodeId];
+                    delete activeIncidents[nodeId];
+                    inc.durationSec = Math.max(1, Math.round((Date.now() - inc.startTimestamp) / 1000));
+                    inc.endTime = new Date().toLocaleTimeString();
+                    
+                    // Prepend to history (newest first)
+                    incidentsHistory.unshift(inc);
+                    if (incidentsHistory.length > 40) incidentsHistory.pop();
+                    try {
+                        localStorage.setItem('geotech_incidents', JSON.stringify(incidentsHistory));
+                    } catch(e) {}
+
+                    postResolutionChatCard(inc);
+                    updateNotifBadge();
+                    
+                    if (Object.keys(activeIncidents).length === 0) {
+                        hasSpreadingAlertBeenPosted = false;
+                    }
+
+                    const modal = document.getElementById('incidents-modal');
+                    if (modal && !modal.classList.contains('hidden')) {
+                        renderIncidentsList();
+                    }
+                }
+            }
+        }
+
+        // ==========================================
+        // 9.6 PAST ABNORMALITIES AUDIT MODAL
+        // ==========================================
+        function toggleIncidentsModal() {
+            const modal = document.getElementById('incidents-modal');
+            if (!modal) return;
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                renderIncidentsList();
+            } else {
+                modal.classList.add('hidden');
+            }
+        }
+
+        function renderIncidentsList() {
+            const listEl = document.getElementById('incidents-list');
+            if (!listEl) return;
+
+            updateNotifBadge();
+
+            if (!incidentsHistory || incidentsHistory.length === 0) {
+                listEl.innerHTML = `
+                    <div class="text-center py-12 text-xs text-slate-500 font-mono">
+                        No past movement abnormalities recorded yet.<br>
+                        When sensors detect abnormal surge or tilt, events are logged here automatically.
+                    </div>
+                `;
+                return;
+            }
+
+            listEl.innerHTML = incidentsHistory.map((inc) => {
+                return `
+                    <div class="pt-3 pb-3 space-y-2 font-mono">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="px-2 py-0.5 rounded text-[10px] font-black bg-cyan-950 text-cyan-300 border border-cyan-800">
+                                        ${inc.id}
+                                    </span>
+                                    <span class="font-bold text-xs text-white">${inc.nodeId}</span>
+                                    <span class="text-[10px] text-slate-400">@ ${inc.zone}</span>
+                                </div>
+                                <p class="text-[10px] text-slate-400 mt-1">
+                                    <b class="text-slate-300">${inc.pit}</b> &bull; Coords: <span class="text-cyan-400">${inc.lat.toFixed(5)}°N, ${inc.lon.toFixed(5)}°E</span>
+                                </p>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-[10px] text-slate-400">Time: <b class="text-slate-200">${inc.startTime}</b></div>
+                                <div class="text-[10px] text-slate-400">Duration: <b class="text-amber-300">${inc.durationSec}s</b></div>
+                            </div>
+                        </div>
+
+                        <!-- Telemetry Summary -->
+                        <div class="flex items-center gap-2 text-[10px] bg-slate-950/70 p-1.5 rounded border border-slate-800">
+                            <span class="text-cyan-300">Peak Tilt: <b>${inc.tilt.toFixed(1)}°</b></span>
+                            <span class="text-purple-300">Peak Vib: <b>${inc.vib.toFixed(2)}g</b></span>
+                            <span class="text-red-400 font-bold">Min FoS: <b>${inc.fos.toFixed(2)}</b></span>
+                        </div>
+
+                        <!-- Verification Status & Operator Notes -->
+                        <div class="space-y-1.5">
+                            <div class="flex items-center justify-between">
+                                <label class="text-[10px] text-slate-400 uppercase font-bold">Verification Status:</label>
+                                <select onchange="updateIncidentStatus('${inc.id}', this.value)" class="bg-slate-950 border border-slate-700 text-[10px] rounded px-2 py-1 text-slate-200 focus:outline-none focus:border-cyan-500">
+                                    <option value="Unverified" ${inc.status === 'Unverified' ? 'selected' : ''}>⚠️ Unverified</option>
+                                    <option value="Verified Geotechnical Hazard" ${inc.status === 'Verified Geotechnical Hazard' ? 'selected' : ''}>🚨 Verified Geotechnical Hazard</option>
+                                    <option value="Vehicle Motion (Haul Truck / Dumper)" ${inc.status === 'Vehicle Motion (Haul Truck / Dumper)' ? 'selected' : ''}>🚚 Vehicle Motion (Haul Truck / Dumper)</option>
+                                    <option value="Heavy Equipment / Construction" ${inc.status === 'Heavy Equipment / Construction' ? 'selected' : ''}>🚜 Heavy Equipment / Construction</option>
+                                    <option value="Blasting Activity / Shockwave" ${inc.status === 'Blasting Activity / Shockwave' ? 'selected' : ''}>💥 Blasting Activity / Shockwave</option>
+                                    <option value="False Alarm / Sensor Test" ${inc.status === 'False Alarm / Sensor Test' ? 'selected' : ''}>🛠️ False Alarm / Sensor Test</option>
+                                </select>
+                            </div>
+
+                            <!-- Manual Operator Notes -->
+                            <div class="flex items-start gap-1.5">
+                                <textarea id="note-${inc.id}" rows="2" placeholder="Write operator field review (e.g. verified due to dump truck movement on haul road)..." class="flex-1 bg-slate-950 border border-slate-800 rounded p-1.5 text-[10px] text-slate-200 placeholder-slate-600 focus:outline-none focus:border-cyan-500 resize-none">${escapeHtml(inc.operatorNote || '')}</textarea>
+                                <button onclick="saveIncidentNote('${inc.id}')" id="btn-save-${inc.id}" class="px-2.5 py-3 rounded bg-cyan-700 hover:bg-cyan-600 text-white font-bold text-[10px] transition">SAVE</button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        function updateIncidentStatus(incId, newStatus) {
+            const inc = incidentsHistory.find(i => i.id === incId);
+            if (inc) {
+                inc.status = newStatus;
+                try {
+                    localStorage.setItem('geotech_incidents', JSON.stringify(incidentsHistory));
+                } catch(e) {}
+                updateNotifBadge();
+                logEvent(`Incident ${incId} updated to: ${newStatus}`, 'info');
+            }
+        }
+
+        function saveIncidentNote(incId) {
+            const noteEl = document.getElementById(`note-${incId}`);
+            const btnEl = document.getElementById(`btn-save-${incId}`);
+            if (!noteEl) return;
+
+            const inc = incidentsHistory.find(i => i.id === incId);
+            if (inc) {
+                inc.operatorNote = noteEl.value.trim();
+                try {
+                    localStorage.setItem('geotech_incidents', JSON.stringify(incidentsHistory));
+                } catch(e) {}
+
+                if (btnEl) {
+                    const orig = btnEl.textContent;
+                    btnEl.textContent = 'SAVED ✓';
+                    btnEl.className = 'px-2.5 py-3 rounded bg-emerald-700 text-white font-bold text-[10px] transition';
+                    setTimeout(() => {
+                        btnEl.textContent = orig;
+                        btnEl.className = 'px-2.5 py-3 rounded bg-cyan-700 hover:bg-cyan-600 text-white font-bold text-[10px] transition';
+                    }, 1400);
+                }
+                logEvent(`Operator review note saved for ${incId}`, 'success');
+            }
+        }
+
+        // ==========================================
+        // 10. EXPORT CSV FEATURE
+        // ==========================================
+        function exportCSV() {
+            let csv = "Timestamp,Node_ID,Lat,Lon,Risk_Score,Factor_of_Safety,Velocity_mm_h,Acceleration,Filtered_Tilt_deg,Vibration_Peak_g,Vibration_RMS_g,Status\n";
+            const now = new Date().toISOString();
+            for (const [id, data] of Object.entries(globalState)) {
+                const tilt = data.metrics ? data.metrics.tilt_total_deg : 0;
+                const vibPeak = data.metrics ? data.metrics.vibration_peak_g : 0;
+                const vibRms = data.metrics ? data.metrics.vibration_rms_g : 0;
+                csv += `${now},${id},${data.lat},${data.lon},${data.risk_score.toFixed(4)},${data.fos.toFixed(2)},${data.velocity.toFixed(3)},${data.acceleration.toFixed(3)},${tilt.toFixed(2)},${vibPeak.toFixed(2)},${vibRms.toFixed(2)},${data.status}\n`;
+            }
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `NLC_Sector4_Telemetry_${Date.now()}.csv`;
+            a.click();
+            logEvent("Telemetry log exported to CSV successfully.", 'info');
+        }
+
+        // ==========================================
+        // 11. INTERACTIVE MOVEMENT SIMULATOR
+        // ==========================================
+        async function triggerSimulatedMotion() {
+            const btn = document.getElementById('sim-motion-btn');
+            if (btn) {
+                btn.innerHTML = '<span>⚡ TRIGGERING...</span>';
+                btn.className = 'px-2.5 py-1 rounded text-[10px] font-mono font-black bg-red-900/90 text-red-200 border border-red-500 transition flex items-center space-x-1 shadow-sm animate-pulse';
+            }
+            try {
+                const res = await fetch('/api/trigger_movement', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ node_id: 'NODE_01', tilt_spike: 4.8, vib_spike: 0.28 })
+                });
+                const data = await res.json();
+                logEvent("⚡ Geotechnical movement surge triggered on NODE_01", 'warning');
+            } catch (err) {
+                console.error("Simulation error:", err);
+                logEvent("Failed to trigger movement impulse", 'error');
+            } finally {
+                setTimeout(() => {
+                    if (btn) {
+                        btn.innerHTML = '<span>⚡ TEST MOVEMENT</span>';
+                        btn.className = 'px-2.5 py-1 rounded text-[10px] font-mono font-black bg-amber-950/90 text-amber-300 border border-amber-500/60 hover:bg-amber-900/90 transition flex items-center space-x-1 shadow-sm active:scale-95';
+                    }
+                }, 1800);
+            }
+        }
+
+        // Utility: escape HTML for safe rendering
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.appendChild(document.createTextNode(str));
+            return div.innerHTML;
+        }
+
+        // Weather Report Fetcher (Open-Meteo — no API key required)
+        async function fetchWeather() {
+            try {
+                const resp = await fetch('https://api.open-meteo.com/v1/forecast?latitude=11.567&longitude=79.486&current_weather=true');
+                const data = await resp.json();
+                const cw = data.current_weather;
+                if (!cw) return;
+
+                const temp = Math.round(cw.temperature);
+                const wmo = cw.weathercode;
+
+                // WMO Weather Code → icon + description
+                let icon = '☀️', desc = 'Clear';
+                if (wmo <= 1) { icon = '☀️'; desc = 'Sunny'; }
+                else if (wmo <= 3) { icon = '⛅'; desc = 'Partly Cloudy'; }
+                else if (wmo <= 48) { icon = '🌫️'; desc = 'Fog / Haze'; }
+                else if (wmo <= 57) { icon = '🌦️'; desc = 'Drizzle'; }
+                else if (wmo <= 67) { icon = '🌧️'; desc = 'Rain'; }
+                else if (wmo <= 77) { icon = '❄️'; desc = 'Snow'; }
+                else if (wmo <= 82) { icon = '🌧️'; desc = 'Heavy Rain'; }
+                else if (wmo <= 86) { icon = '🌨️'; desc = 'Snow Showers'; }
+                else if (wmo >= 95) { icon = '⛈️'; desc = 'Thunderstorm'; }
+
+                const iconEl = document.getElementById('weather-icon');
+                const tempEl = document.getElementById('weather-temp');
+                const descEl = document.getElementById('weather-desc');
+                if (iconEl) iconEl.textContent = icon;
+                if (tempEl) tempEl.textContent = `${temp}°C`;
+                if (descEl) descEl.textContent = desc;
+
+                // Highlight rain conditions (relevant to subsidence risk)
+                if (wmo >= 51) {
+                    const widget = document.getElementById('weather-widget');
+                    if (widget) widget.classList.add('border-amber-500/60');
+                }
+            } catch(e) {
+                console.warn('[WEATHER] Offline — using static fallback');
+            }
+        }
+
+        // Boot WebSocket on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            connectWebSocket();
+            updateNotifBadge();
+            fetchWeather();
+            // Refresh weather every 10 minutes
+            setInterval(fetchWeather, 600000);
+            setTimeout(() => {
+                if (!activeChartNode && (globalState['NODE_01'] || true)) {
+                    openHUD('NODE_01');
+                }
+            }, 800);
+        });
+    
+
+        // URL Parameter Support: ?mode=engineering or ?mode=operator
+        const urlParams = new URLSearchParams(window.location.search);
+        const bootMode = urlParams.get('mode') || 'operator';
+        document.addEventListener('DOMContentLoaded', () => {
+            setAppMode(bootMode);
+        });
+        setAppMode(bootMode);
+    
+    </script>
+</body>
+</html>
